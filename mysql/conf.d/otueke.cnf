@@ -1,0 +1,39 @@
+# Otueke - MySQL 8.4 server settings (dev + baseline for site/cloud servers).
+# Tune buffer sizes per host; keep the character set, time zone, sql_mode and
+# binary log settings identical in every environment.
+
+[mysqld]
+# --- Character set / collation ---
+character-set-server = utf8mb4
+collation-server     = utf8mb4_0900_ai_ci
+
+# --- Time: store everything in UTC ---
+default-time-zone = '+00:00'
+
+# --- Strict SQL mode ---
+sql_mode = ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
+
+# --- Storage engine ---
+default-storage-engine          = InnoDB
+innodb_file_per_table           = ON
+innodb_buffer_pool_size         = 1G      # site server: ~50-70% of RAM dedicated to MySQL
+innodb_redo_log_capacity        = 512M
+innodb_flush_log_at_trx_commit  = 1       # full durability for financial data
+sync_binlog                     = 1
+# Linux hosts may add: innodb_flush_method = O_DIRECT  (not valid on Windows)
+
+# --- Binary log (required for point-in-time recovery) ---
+server-id                  = 1
+log_bin                    = otueke-binlog
+binlog_format              = ROW
+binlog_row_image           = FULL
+binlog_expire_logs_seconds = 1209600   # 14 days; must exceed the full-backup interval
+max_binlog_size            = 256M
+
+# --- Connections / safety ---
+max_connections           = 300
+skip_name_resolve         = ON
+local_infile              = OFF
+
+[client]
+default-character-set = utf8mb4

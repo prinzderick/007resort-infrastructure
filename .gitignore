@@ -1,0 +1,31 @@
+# Environment files - only *.env.example templates are committed
+.env
+*.env
+.env.*
+!*.env.example
+!.env.example
+
+# Keys, certificates, secrets
+*.pem
+*.key
+*.pfx
+*.p12
+*.crt
+secrets/
+*.secret
+
+# MySQL option files with credentials (never commit)
+*.my.cnf
+mysql-backup.cnf
+
+# Backups / dumps
+backups/
+*.sql
+*.sql.gz
+*.sql.gz.enc
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

@@ -1,0 +1,65 @@
+# Otueke - local development dependencies (NOT for production).
+#
+# Usage (from repository root):
+#   cp compose/dev/.env.example compose/dev/.env   # then edit values
+#   docker compose -f compose/dev/docker-compose.yml --env-file compose/dev/.env up -d
+#
+# Credentials come from the .env file; nothing secret is stored here.
+name: otueke-dev
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: otueke-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in compose/dev/.env}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-otueke}
+      MYSQL_USER: ${MYSQL_USER:-otueke_app}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD in compose/dev/.env}
+      TZ: UTC
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+00:00
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ../../mysql/conf.d/otueke.cnf:/etc/mysql/conf.d/otueke.cnf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p\"$${MYSQL_ROOT_PASSWORD}\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    container_name: otueke-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # Optional: catches outgoing mail in development. Start with:
+  #   docker compose ... --profile mail up -d
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: otueke-mailpit
+    profiles: ["mail"]
+    restart: unless-stopped
+    ports:
+      - "${MAILPIT_SMTP_PORT:-1025}:1025"
+      - "${MAILPIT_UI_PORT:-8025}:8025"
+
+volumes:
+  mysql-data:
+  redis-data:
