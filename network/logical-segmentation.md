@@ -14,7 +14,7 @@
 
 | VLAN | ID (proposed) | Subnet (proposed) | Members |
 | --- | --- | --- | --- |
-| SERVER | 10 | 10.10.10.0/24 | Windows application server (Otueke API, MySQL, Redis, local admin-web), NAS |
+| SERVER | 10 | 10.10.10.0/24 | Windows application server (007 Resort & Spa API, MySQL, Redis, local admin-web), NAS |
 | POS/OPERATIONS | 20 | 10.10.20.0/24 | 10 POS terminals, 18 tablets, 4 KDS screens, receipt/kitchen printers, scanners |
 | CCTV | 30 | 10.10.30.0/24 | Cameras, NVR |
 | STAFF | 40 | 10.10.40.0/24 | Management/back-office workstations and staff laptops |
@@ -47,9 +47,9 @@ Notes:
 
 | SSID | VLAN | Security | Notes |
 | --- | --- | --- | --- |
-| `Otueke-OPS` | POS/OPERATIONS (20) | WPA3-Enterprise or WPA2/3-PSK with per-device MAC allow-list | Hidden SSID optional; tablets and wireless POS |
-| `Otueke-STAFF` | STAFF (40) | WPA3-Enterprise (preferred) or WPA3-Personal | Back-office laptops |
-| `Otueke-Guest` | GUEST (50) | WPA3-Personal / captive portal | Client isolation, bandwidth limits |
+| `R007-OPS` | POS/OPERATIONS (20) | WPA3-Enterprise or WPA2/3-PSK with per-device MAC allow-list | Hidden SSID optional; tablets and wireless POS |
+| `R007-STAFF` | STAFF (40) | WPA3-Enterprise (preferred) or WPA3-Personal | Back-office laptops |
+| `R007-Guest` | GUEST (50) | WPA3-Personal / captive portal | Client isolation, bandwidth limits |
 
 - AP placement to cover restaurant/bar, pool, spa, sports courts, reception and kitchen; the
   kitchen and pool areas need a site survey (metal, water and heat).

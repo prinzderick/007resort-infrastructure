@@ -16,7 +16,7 @@ an internet outage must not stop trading.
 
 ## What degrades
 
-- **Online booking / online payments:** `otueke-booking-web` keeps running in the cloud, but new
+- **Online booking / online payments:** `007resort-booking-web` keeps running in the cloud, but new
   online bookings reach the site only when sync resumes. Risk of conflicts for the same slot is
   handled by the API sync/conflict rules (per architecture); Reception should check pending
   online bookings after recovery.

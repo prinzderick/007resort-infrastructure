@@ -1,21 +1,21 @@
-# Otueke - local development dependencies (NOT for production).
+# 007 Resort & Spa - local development dependencies (NOT for production).
 #
 # Usage (from repository root):
 #   cp compose/dev/.env.example compose/dev/.env   # then edit values
 #   docker compose -f compose/dev/docker-compose.yml --env-file compose/dev/.env up -d
 #
 # Credentials come from the .env file; nothing secret is stored here.
-name: otueke-dev
+name: r007-dev
 
 services:
   mysql:
     image: mysql:8.4
-    container_name: otueke-mysql
+    container_name: r007-mysql
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in compose/dev/.env}
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-otueke}
-      MYSQL_USER: ${MYSQL_USER:-otueke_app}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-r007_dev}
+      MYSQL_USER: ${MYSQL_USER:-r007_app}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD in compose/dev/.env}
       TZ: UTC
     command:
@@ -26,7 +26,7 @@ services:
       - "${MYSQL_PORT:-3306}:3306"
     volumes:
       - mysql-data:/var/lib/mysql
-      - ../../mysql/conf.d/otueke.cnf:/etc/mysql/conf.d/otueke.cnf:ro
+      - ../../mysql/conf.d/r007.cnf:/etc/mysql/conf.d/r007.cnf:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p\"$${MYSQL_ROOT_PASSWORD}\" --silent"]
       interval: 10s
@@ -36,7 +36,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: otueke-redis
+    container_name: r007-redis
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     ports:
@@ -53,7 +53,7 @@ services:
   #   docker compose ... --profile mail up -d
   mailpit:
     image: axllent/mailpit:latest
-    container_name: otueke-mailpit
+    container_name: r007-mailpit
     profiles: ["mail"]
     restart: unless-stopped
     ports:

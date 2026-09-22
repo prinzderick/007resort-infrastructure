@@ -6,8 +6,8 @@
 
 | Layer | What | When | Where |
 | --- | --- | --- | --- |
-| Full logical backup | `mysqldump --single-transaction` of `otueke` (routines, triggers, events) | Nightly (e.g. 02:30 local) | `D:\OtuekeBackups\full` on server |
-| Binary logs | ROW-format binlogs (enables point-in-time recovery) | Continuous; copied every 15 min | `D:\OtuekeBackups\binlog` |
+| Full logical backup | `mysqldump --single-transaction` of `r007` (routines, triggers, events) | Nightly (e.g. 02:30 local) | `D:\R007Backups\full` on server |
+| Binary logs | ROW-format binlogs (enables point-in-time recovery) | Continuous; copied every 15 min | `D:\R007Backups\binlog` |
 | NAS copy | Full + binlogs | After each job | Site NAS (SERVER VLAN) |
 | Offsite / cloud copy | Encrypted full + binlogs | Nightly (outbound HTTPS) | Cloud object storage (immutable/versioned bucket) |
 
@@ -15,7 +15,7 @@
   the secret store, or the storage client's client-side encryption). Keys are never stored
   next to the backups.
 - **Credentials:** the backup job reads MySQL credentials from a protected option file
-  (`C:\Otueke\secrets\mysql-backup.cnf`, ACL: backup service account + Administrators only).
+  (`C:\R007\secrets\mysql-backup.cnf`, ACL: backup service account + Administrators only).
   Never pass passwords on the command line.
 - **Retention (proposal):** local 7 days; NAS 35 days; offsite 35 daily + 12 monthly.
   Binlogs retained at least as long as the oldest full backup kept locally
@@ -28,7 +28,7 @@
 runs as the backup service account):
 
 1. `mysqldump --defaults-extra-file=<option file> --single-transaction --routines --triggers
-   --events --source-data=2 otueke` -> compressed file with UTC timestamp.
+   --events --source-data=2 r007` -> compressed file with UTC timestamp.
 2. Verify the dump completed (exit code, trailing "Dump completed" line).
 3. Flush and copy binary logs.
 4. Copy to NAS; encrypted copy to offsite storage.

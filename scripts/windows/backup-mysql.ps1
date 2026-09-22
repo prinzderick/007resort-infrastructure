@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Nightly MySQL logical backup for the Otueke site database.
+    Nightly MySQL logical backup for the 007 Resort & Spa site database.
 
 .DESCRIPTION
     DRAFT - pending architecture approval. See runbooks/backup-and-restore.md.
@@ -14,26 +14,26 @@
     - Offsite (encrypted) upload is a placeholder to be implemented per the approved
       provider.
 
-    Example option file (C:\Otueke\secrets\mysql-backup.cnf):
+    Example option file (C:\R007\secrets\mysql-backup.cnf):
         [client]
-        user=otueke_backup
+        user=r007_backup
         password=<stored only in this protected file>
         host=127.0.0.1
         port=3306
 
 .EXAMPLE
-    .\backup-mysql.ps1 -OptionFile 'C:\Otueke\secrets\mysql-backup.cnf' -Verbose
+    .\backup-mysql.ps1 -OptionFile 'C:\R007\secrets\mysql-backup.cnf' -Verbose
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
     [ValidateScript({ Test-Path -LiteralPath $_ -PathType Leaf })]
-    [string] $OptionFile = 'C:\Otueke\secrets\mysql-backup.cnf',
+    [string] $OptionFile = 'C:\R007\secrets\mysql-backup.cnf',
 
-    [string] $Database = 'otueke',
+    [string] $Database = 'r007',
 
     [string] $MySqlBin = 'C:\Program Files\MySQL\MySQL Server 8.4\bin',
 
-    [string] $BackupRoot = 'D:\OtuekeBackups',
+    [string] $BackupRoot = 'D:\R007Backups',
 
     [string] $NasPath = '',
 

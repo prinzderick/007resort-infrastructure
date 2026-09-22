@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Installs (or updates) the Otueke API as a Windows service on the on-site server.
+    Installs (or updates) the 007 Resort & Spa API as a Windows service on the on-site server.
 
 .DESCRIPTION
     DRAFT - pending architecture approval.
@@ -14,17 +14,17 @@
     than prompting for the service account password via Get-Credential.
 
 .PARAMETER BinaryPath
-    Full path to the published API executable, e.g. C:\Otueke\api\1.0.0\Otueke.Api.exe
+    Full path to the published API executable, e.g. C:\R007\api\1.0.0\R007.Api.exe
 
 .PARAMETER ServiceName
-    Windows service name. Default: OtuekeApi
+    Windows service name. Default: R007Api
 
 .PARAMETER ServiceCredential
-    Credential of the account to run the service as (e.g. .\svc-otueke-api or
-    DOMAIN\svc-otueke-api). If omitted, you will be prompted with Get-Credential.
+    Credential of the account to run the service as (e.g. .\svc-r007-api or
+    DOMAIN\svc-r007-api). If omitted, you will be prompted with Get-Credential.
 
 .EXAMPLE
-    .\install-api-service.ps1 -BinaryPath 'C:\Otueke\api\1.0.0\Otueke.Api.exe' -WhatIf
+    .\install-api-service.ps1 -BinaryPath 'C:\R007\api\1.0.0\R007.Api.exe' -WhatIf
 
 .NOTES
     Run from an elevated PowerShell session.
@@ -35,11 +35,11 @@ param(
     [ValidateScript({ Test-Path -LiteralPath $_ -PathType Leaf })]
     [string] $BinaryPath,
 
-    [string] $ServiceName = 'OtuekeApi',
+    [string] $ServiceName = 'R007Api',
 
-    [string] $DisplayName = 'Otueke API',
+    [string] $DisplayName = '007 Resort & Spa API',
 
-    [string] $Description = 'Otueke Integrated Facility Operations Platform - API (site mode)',
+    [string] $Description = '007 Resort & Spa Integrated Facility Operations Platform - API (site mode)',
 
     [System.Management.Automation.PSCredential]
     [System.Management.Automation.Credential()]
@@ -60,7 +60,7 @@ if (-not (Test-IsAdministrator)) {
 }
 
 if ($ServiceCredential -eq [System.Management.Automation.PSCredential]::Empty) {
-    $ServiceCredential = Get-Credential -Message "Service account for $ServiceName (e.g. .\svc-otueke-api)"
+    $ServiceCredential = Get-Credential -Message "Service account for $ServiceName (e.g. .\svc-r007-api)"
 }
 
 $resolvedBinary = (Resolve-Path -LiteralPath $BinaryPath).Path

@@ -17,7 +17,7 @@
 2. **Open an incident record**: time (local + UTC), reporter, affected
    facility/operating point/terminals, symptoms.
 3. **Preserve evidence** - do not reboot/wipe suspected compromised machines before IT decides;
-   export relevant logs (API logs `C:\Otueke\logs`, Windows event log, firewall logs).
+   export relevant logs (API logs `C:\R007\logs`, Windows event log, firewall logs).
 4. **Communicate** - duty manager informs staff; IT lead updates the incident record.
 
 ## Specific playbooks

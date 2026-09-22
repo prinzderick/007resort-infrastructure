@@ -5,7 +5,7 @@
 
 | Script | Purpose |
 | --- | --- |
-| [`windows/install-api-service.ps1`](windows/install-api-service.ps1) | Install/update the published Otueke API as a Windows service (delayed auto-start, restart on failure, depends on MySQL). |
+| [`windows/install-api-service.ps1`](windows/install-api-service.ps1) | Install/update the published 007 Resort & Spa API as a Windows service (delayed auto-start, restart on failure, depends on MySQL). |
 | [`windows/backup-mysql.ps1`](windows/backup-mysql.ps1) | Nightly `mysqldump --single-transaction` backup with binlog position, gzip, NAS copy and local retention. |
 
 ## Rules

@@ -4,8 +4,8 @@
 
 ## Scope
 
-Install the Windows local application server that runs the Otueke API (Windows service),
-MySQL 8.4, optional Redis and the local `otueke-admin-web`.
+Install the Windows local application server that runs the 007 Resort & Spa API (Windows service),
+MySQL 8.4, optional Redis and the local `007resort-admin-web`.
 
 ## Prerequisites
 
@@ -22,24 +22,24 @@ MySQL 8.4, optional Redis and the local `otueke-admin-web`.
    - Enable BitLocker on all volumes; store recovery keys in the approved vault.
    - Enable Windows Firewall; allow inbound only: API port (5443) from POS/OPS and STAFF
      VLANs, admin-web (443) from STAFF VLAN. Block everything else inbound.
-   - Create a dedicated low-privilege service account for the API (e.g. `svc-otueke-api`).
+   - Create a dedicated low-privilege service account for the API (e.g. `svc-r007-api`).
    - Configure NTP time sync (UTC internally; Windows display time zone per site).
 2. **MySQL 8.4**
    - Install MySQL 8.4 LTS as a Windows service, data directory on `D:\MySQL\data`.
-   - Apply settings equivalent to [`mysql/conf.d/otueke.cnf`](../mysql/conf.d/otueke.cnf)
+   - Apply settings equivalent to [`mysql/conf.d/r007.cnf`](../mysql/conf.d/r007.cnf)
      in `my.ini` (utf8mb4, UTC, strict sql_mode, binlog ROW).
    - Bind to `127.0.0.1` (or the SERVER VLAN IP if other server-VLAN hosts need it).
-   - Create users: `otueke_app` (DML on `otueke`), `otueke_migrator` (DDL, used only during
-     deployment), `otueke_backup` (backup privileges). Strong unique passwords.
+   - Create users: `r007_app` (DML on `r007`), `r007_migrator` (DDL, used only during
+     deployment), `r007_backup` (backup privileges). Strong unique passwords.
 3. **Redis (optional)** - install and bind to localhost with a password, or skip.
-4. **Otueke API**
-   - Copy the published API build to `C:\Otueke\api\<version>\`.
+4. **007 Resort & Spa API**
+   - Copy the published API build to `C:\R007\api\<version>\`.
    - Provide configuration via machine-level environment variables readable only by the
      service account (template: [`env/site.env.example`](../env/site.env.example)).
    - Run database migrations using the migrator credentials (per API release notes).
    - Install the service: [`scripts/windows/install-api-service.ps1`](../scripts/windows/install-api-service.ps1).
    - Verify `https://<server>:5443/health` from a POS/OPS device.
-5. **otueke-admin-web** - install PHP 8.4 + web server (IIS with FastCGI or Caddy/nginx for
+5. **007resort-admin-web** - install PHP 8.4 + web server (IIS with FastCGI or Caddy/nginx for
    Windows), deploy the release, create `.env` from the template with production values,
    `php artisan config:cache`. Verify `/health` from a STAFF workstation.
 6. **Backups** - create the protected MySQL option file and schedule

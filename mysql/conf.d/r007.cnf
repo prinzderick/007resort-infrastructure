@@ -1,4 +1,4 @@
-# Otueke - MySQL 8.4 server settings (dev + baseline for site/cloud servers).
+# 007 Resort & Spa - MySQL 8.4 server settings (dev + baseline for site/cloud servers).
 # Tune buffer sizes per host; keep the character set, time zone, sql_mode and
 # binary log settings identical in every environment.
 
@@ -24,7 +24,7 @@ sync_binlog                     = 1
 
 # --- Binary log (required for point-in-time recovery) ---
 server-id                  = 1
-log_bin                    = otueke-binlog
+log_bin                    = r007-binlog
 binlog_format              = ROW
 binlog_row_image           = FULL
 binlog_expire_logs_seconds = 1209600   # 14 days; must exceed the full-backup interval
