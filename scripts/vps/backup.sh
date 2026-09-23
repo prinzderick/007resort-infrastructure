@@ -43,7 +43,11 @@ ENV_FILE="$APP_ROOT/shared/.env"
 DB_NAME="r007"; [[ -f "$ENV_FILE" ]] && DB_NAME="$(env_get "$ENV_FILE" DB_DATABASE)"
 [[ "$DB_NAME" =~ ^[A-Za-z0-9_]+$ ]] || die "bad DB name"
 
-ping_hc() { [[ -n "$HEALTHCHECK_URL" ]] && ! is_dry && curl -fsS -m 10 --retry 3 "$HEALTHCHECK_URL$1" >/dev/null 2>&1 || true; }
+ping_hc() {
+  if [[ -n "$HEALTHCHECK_URL" ]] && ! is_dry; then
+    curl -fsS -m 10 --retry 3 "$HEALTHCHECK_URL$1" >/dev/null 2>&1 || true
+  fi
+}
 on_fail() { local rc=$?; if [[ $rc -ne 0 ]]; then err "backup FAILED (exit $rc)"; ping_hc /fail; fi; }
 trap on_fail EXIT
 ping_hc /start

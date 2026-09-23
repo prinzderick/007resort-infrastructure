@@ -68,7 +68,9 @@ svc() { # svc COMMAND... : run a privileged service command unless services are 
   run $SUDO "$@"
 }
 
-current_release() { [[ -L "$CURRENT" ]] && basename "$(readlink -f "$CURRENT")" || true; }
+current_release() {
+  if [[ -L "$CURRENT" ]]; then basename "$(readlink -f "$CURRENT")"; fi
+}
 
 swap_current() { # swap_current RELEASE_ID : atomic symlink replacement
   local id="$1"
