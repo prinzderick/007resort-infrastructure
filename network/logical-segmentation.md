@@ -14,7 +14,7 @@
 
 | VLAN | ID (proposed) | Subnet (proposed) | Members |
 | --- | --- | --- | --- |
-| SERVER | 10 | 10.10.10.0/24 | Windows application server (007 Resort & Spa API, MySQL, Redis, local admin-web), NAS |
+| SERVER | 10 | 10.10.10.0/24 | Windows application server = Local node (Laravel API, MySQL, Redis, Reverb, local admin-web), NAS |
 | POS/OPERATIONS | 20 | 10.10.20.0/24 | 10 POS terminals, 18 tablets, 4 KDS screens, receipt/kitchen printers, scanners |
 | CCTV | 30 | 10.10.30.0/24 | Cameras, NVR |
 | STAFF | 40 | 10.10.40.0/24 | Management/back-office workstations and staff laptops |
@@ -29,18 +29,18 @@ traffic allowed).
 | From \ To | SERVER | POS/OPS | CCTV | STAFF | GUEST | Internet |
 | --- | --- | --- | --- | --- | --- | --- |
 | **SERVER** | - | Printers: 9100/tcp (if API prints directly) | deny | deny | deny | **Outbound only**: HTTPS 443 for cloud sync, offsite backups, updates; NTP |
-| **POS/OPS** | API ports only (5443/tcp; 5080/tcp only during commissioning) | Tablet/POS -> printers 9100/tcp | deny | deny | deny | deny (optional: payment terminal provider endpoints only) |
+| **POS/OPS** | API: 80/tcp (443/tcp when internal TLS is enabled) and Reverb WebSocket 8085/tcp only | Tablet/POS -> printers 9100/tcp | deny | deny | deny | deny (optional: payment terminal provider endpoints only) |
 | **CCTV** | deny | deny | intra-VLAN (cameras -> NVR) | deny | deny | deny (vendor updates via change window only) |
-| **STAFF** | admin-web only (443/tcp) | deny | NVR viewing only if approved | - | deny | HTTPS via firewall |
+| **STAFF** | admin-web (443/tcp) and the API (80/tcp, 443/tcp, 8085/tcp) for staff devices | deny | NVR viewing only if approved | - | deny | HTTPS via firewall |
 | **GUEST** | deny | deny | deny | deny | client isolation | **Internet only** (rate limited) |
 
 Notes:
 
 - No port forwarding / inbound NAT to the SERVER VLAN. Sync and backups are initiated
   **outbound** from the server.
-- MySQL (3306) and Redis (6379) listen on localhost/SERVER VLAN only and are **not** reachable
+- MySQL (3306) and Redis (6379) listen on **127.0.0.1 only** (the server's own firewall has no rule for them either) and are **not** reachable
   from POS/OPS or STAFF.
-- DNS: internal resolver (firewall or server) for `*.site.local` names; GUEST uses public DNS.
+- DNS: internal resolver (firewall or server) for `*.site.local` names - notably `r007-api.site.local` -> the server's static IP, which tablets/POS use to find the Local node ([device onboarding](../runbooks/device-registration.md)); GUEST uses public DNS.
 - IT remote support uses an approved outbound-initiated remote tool, never inbound RDP.
 
 ## Wi-Fi (7 x Wi-Fi 6 access points)
@@ -70,7 +70,7 @@ Fixed devices get DHCP reservations (or static IPs) and are recorded in the devi
 ## Validation checklist
 
 - [ ] From GUEST: server, POS, CCTV and STAFF addresses unreachable; internet works.
-- [ ] From POS/OPS: only API port on server reachable; MySQL 3306 blocked.
+- [ ] From POS/OPS: only 80 (443) and 8085 on the server reachable; MySQL 3306 / Redis 6379 blocked.
 - [ ] From STAFF: admin-web reachable; API/MySQL direct access blocked (unless approved).
 - [ ] From internet: no open ports towards the site (external port scan).
 - [ ] Server: outbound HTTPS to cloud API and backup target works.

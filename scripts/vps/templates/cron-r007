@@ -1,0 +1,4 @@
+# Managed by 007resort-infrastructure. Laravel scheduler (every minute).
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+* * * * * @@DEPLOY_USER@@ cd @@APP_ROOT@@/current && /usr/bin/flock -n /tmp/r007-schedule.lock /usr/bin/php artisan schedule:run >> /var/log/r007/scheduler.log 2>&1

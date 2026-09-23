@@ -21,10 +21,10 @@ chore(ci): pin actionlint version
 1. **No secrets.** Never commit passwords, API keys, tokens, certificates (`*.pem`, `*.key`,
    `*.pfx`), backups or real `.env` files. Use `<secret>` / `change-me` placeholders.
    If a secret is committed by mistake: rotate it immediately, then clean history.
-2. **Templates stay complete.** Any new setting used by the API or PHP apps must appear in
-   `env/site.env.example` and/or `env/cloud.env.example` with a comment.
-3. **Scripts** read credentials from protected files or the secret store, support `-WhatIf`,
-   and pass PSScriptAnalyzer.
+2. **Templates stay complete.** Any new setting used by the Laravel API must appear in
+   `env/local.env.example` and/or `env/cloud.env.example` with a comment (placeholders only), in step with `007resort-api/.env.example`.
+3. **Scripts** read credentials from protected files or generate them, never take secrets as parameters, support
+   `-DryRun` (PowerShell) / `--dry-run` (bash), are idempotent, and pass shellcheck / PSScriptAnalyzer.
 4. **Network** changes must keep the site server/database unreachable from the internet; sync
    and backups are outbound-only.
 5. **Runbooks** are living documents: update them with every procedure change and after each
