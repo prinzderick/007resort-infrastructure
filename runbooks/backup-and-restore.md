@@ -1,62 +1,125 @@
-# Runbook: backup and restore (MySQL)
+# Runbook: backup and restore (Local node and Cloud node)
 
-> **DRAFT** - pending architecture approval.
+> **DRAFT** - pending architecture approval. Backup is **not** synchronization and **not** a VM snapshot
+> (ADR-0013): each node has its own backups, and a copy that only lives on the machine it protects is not a backup.
 
 ## Strategy
 
-| Layer | What | When | Where |
-| --- | --- | --- | --- |
-| Full logical backup | `mysqldump --single-transaction` of `r007` (routines, triggers, events) | Nightly (e.g. 02:30 local) | `D:\R007Backups\full` on server |
-| Binary logs | ROW-format binlogs (enables point-in-time recovery) | Continuous; copied every 15 min | `D:\R007Backups\binlog` |
-| NAS copy | Full + binlogs | After each job | Site NAS (SERVER VLAN) |
-| Offsite / cloud copy | Encrypted full + binlogs | Nightly (outbound HTTPS) | Cloud object storage (immutable/versioned bucket) |
+| Layer | Local node (Windows) | Cloud node (VPS) |
+| --- | --- | --- |
+| Full logical backup | `mysqldump --single-transaction --routines --triggers --events --source-data=2`, gzip, verified. Task `R007 Nightly Backup`, 02:30 local | same, `/usr/local/sbin/r007-backup`, cron 01:30 UTC (= 02:30 Lagos) |
+| Point-in-time (PITR) | ROW binlogs (`r007-binlog.*`, 14-day expiry); closed logs copied with each backup | same; closed binlogs archived (encrypted) with each run |
+| Second copy | NAS: `\\nas.site.local\r007-backups\{full,binlog}` with SHA-256 verification | provider snapshot (extra safety only) |
+| Off-site copy | optional via `rclone` (+ `age`) - **recommended**: a fire/theft/ransomware at the property must not take the only copies | **required**: `rclone` to any S3/B2/GCS/SFTP remote, encrypted with `age` |
+| Config/secret backup | `shared\.env` is in the site record / password vault (never plain on the NAS) | `shared/.env` uploaded **encrypted only** (skipped if no `AGE_RECIPIENT`) |
+| Retention | local 7 d, NAS 35 d, off-site 35 d daily + monthly (proposal) | local 7 d, remote 35 d |
+| Script | [`scripts/windows/backup-mysql.ps1`](../scripts/windows/backup-mysql.ps1) | [`scripts/vps/backup.sh`](../scripts/vps/backup.sh) |
+| Restore | [`scripts/windows/restore-mysql.ps1`](../scripts/windows/restore-mysql.ps1) | manual (below) + [`scripts/vps/restore-test.sh`](../scripts/vps/restore-test.sh) |
 
-- **Encryption:** every file leaving the server is encrypted (e.g. AES-256 with a key held in
-  the secret store, or the storage client's client-side encryption). Keys are never stored
-  next to the backups.
-- **Credentials:** the backup job reads MySQL credentials from a protected option file
-  (`C:\R007\secrets\mysql-backup.cnf`, ACL: backup service account + Administrators only).
-  Never pass passwords on the command line.
-- **Retention (proposal):** local 7 days; NAS 35 days; offsite 35 daily + 12 monthly.
-  Binlogs retained at least as long as the oldest full backup kept locally
-  (`binlog_expire_logs_seconds` = 14 days).
-- **Monitoring:** job failures alert IT; a backup older than 26 h is an incident.
+**Targets (proposal): RPO <= 15 min (needs binlog shipping every 15 min - not yet automated, see "Gaps"), RTO <= 4 h.**
+A backup older than 26 hours is an incident (`status.ps1` flags it; on Cloud set `HEALTHCHECK_URL` for a dead-man's-switch).
 
-## Nightly job
+### Credentials and encryption (no secrets in scripts)
 
-[`scripts/windows/backup-mysql.ps1`](../scripts/windows/backup-mysql.ps1) (Task Scheduler,
-runs as the backup service account):
+- Windows: MySQL credentials only in `C:\R007\secrets\mysql-backup.cnf` (`--defaults-extra-file`; ACL Administrators/SYSTEM).
+  NAS credentials, if the NAS is not domain-integrated, in `C:\R007\secrets\nas.cred` (`user=`/`password=` lines, same ACL).
+- VPS: dumps run as root over the MySQL socket (no password). rclone credentials live in root's `rclone.conf` (`rclone config`).
+- **Encryption:** generate an `age` key pair on an *admin workstation* (`age-keygen`); put only the **public** key in
+  `AGE_RECIPIENT` (VPS: `/etc/r007/backup.env`; Windows: `AgeRecipient` in `C:\R007\install-state.json`). The private key
+  lives in the password vault + a sealed copy with the owner, **never on the servers**. Without it off-site backups are unreadable - test that (below).
 
-1. `mysqldump --defaults-extra-file=<option file> --single-transaction --routines --triggers
-   --events --source-data=2 r007` -> compressed file with UTC timestamp.
-2. Verify the dump completed (exit code, trailing "Dump completed" line).
-3. Flush and copy binary logs.
-4. Copy to NAS; encrypted copy to offsite storage.
-5. Prune by retention; write a log line to the event log.
+### One-time setup - Cloud off-site copy
 
-## Restore - full
+```bash
+sudo rclone config                       # create remote, e.g. "r007-offsite" (S3/B2/GCS/SFTP...); prefer a bucket with versioning / object lock
+sudo cp /etc/r007/backup.env.example /etc/r007/backup.env && sudo chmod 600 /etc/r007/backup.env
+sudoedit /etc/r007/backup.env            # RCLONE_REMOTE=r007-offsite:007resort-cloud-backups  AGE_RECIPIENT=age1...
+sudo r007-backup --dry-run && sudo r007-backup      # then confirm the object exists off-server
+```
 
-1. Declare an incident (see [incident response](incident-response.md)); stop the API service so
-   no new writes occur.
-2. Provision an empty MySQL 8.4 instance with the standard config.
-3. Decrypt/copy the chosen full backup; `mysql --defaults-extra-file=<admin option file> < dump.sql`.
-4. Run API health checks; start the API service.
+## Nightly job - what the scripts guarantee
 
-## Restore - point in time (PITR)
+1. Dump to a temp file; **fail** on non-zero exit, on a missing `-- Dump completed` trailer or on a corrupt gzip.
+2. Write a `.sha256`; copy to the NAS / remote and **verify** the copy (checksum / `rclone check`).
+3. Rotate binlogs and archive the closed ones.
+4. Prune by retention only after everything above succeeded.
+5. Failure -> non-zero exit, Windows Application event (source `R007-Backup`, id 7000) / cron mail / healthcheck `/fail`.
 
-1. Restore the latest full backup before the target time (above).
-2. Read the binlog position recorded in the dump header (`--source-data=2`).
-3. Replay binlogs from that position up to just before the bad event:
-   `mysqlbinlog --start-position=<pos> --stop-datetime="YYYY-MM-DD HH:MM:SS" <binlogs> | mysql ...`
-   (times in **UTC**).
-4. Validate totals (e.g. day's sales per operating point) with the finance lead before reopening.
-5. Coordinate with cloud sync: the API's sync process must reconcile after a restore - follow
-   the API release notes; never edit sync tables manually.
+## Restore - Local node
 
-## Quarterly restore test
+**Never restore over the live database without a decision from the IT lead** ([incident response](incident-response.md)).
 
-- Restore last night's backup + binlogs to an isolated test instance (not the live server).
-- Record: duration (RTO), data loss window (RPO), row counts of key tables, issues.
-- File the result in the site record; failed tests are incidents.
+```powershell
+# a) prove a backup is good, any time (this is the quarterly test): restores to a scratch DB, checks, drops it
+C:\R007\scripts\restore-mysql.ps1 -BackupFile D:\R007Backups\full\r007-<UTC>.sql.gz -VerifyOnly
 
-Targets (proposal): **RPO <= 15 minutes**, **RTO <= 4 hours** for the site database.
+# b) inspect data in a side database (never the live one)
+C:\R007\scripts\restore-mysql.ps1 -BackupFile <file> -TargetDatabase r007_inspect
+
+# c) disaster recovery: stops R007-* services, safety-dumps the current DB, recreates the live DB, restarts
+C:\R007\scripts\restore-mysql.ps1 -BackupFile <file> -Live -ConfirmDatabaseName r007
+```
+
+### Point-in-time recovery (bad change at a known time)
+
+1. Restore the newest full backup from **before** the bad event (`-Live`, but pass `-DryRun` first). Services are running again at the end -
+   stop them again for the replay: `Stop-Service R007-Queue,R007-Sync,R007-Reverb; iisreset /stop`.
+2. Read the binlog position from the dump header: `gzip -dc` (or 7-Zip) the file and look for `-- CHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE=..., SOURCE_LOG_POS=...`.
+3. Replay up to just before the event (times are **UTC**):
+   ```powershell
+   & 'C:\R007\tools\mysql\bin\mysqlbinlog.exe' --start-position=<pos> --stop-datetime="YYYY-MM-DD HH:MM:SS" `
+       D:\R007Backups\binlog\r007-binlog.000012 D:\R007Backups\binlog\r007-binlog.000013 |
+     & 'C:\R007\tools\mysql\bin\mysql.exe' --defaults-extra-file=C:\R007\secrets\mysql-admin.cnf
+   ```
+   (start with the binlog named in the header; include every later one in order.)
+4. Validate with the finance lead (day's sales per operating point, stock, open tickets/bookings) before reopening.
+5. **Sync after a restore:** the Local outbox/inbox state is part of the database, so a restored DB replays from its own
+   position. Check `status.ps1` and the Cloud site-health page; events the Cloud already applied are ignored by `event_id`. Never edit sync
+   tables by hand; if the Cloud is *ahead* of the restored Local (Local lost recent events) raise it with the API team before opening sales.
+
+## Restore - Cloud node
+
+```bash
+# 1. get the newest dump (off-server) and decrypt with the age private key from the vault (on your workstation or temporarily on the server)
+rclone copy r007-offsite:007resort-cloud-backups/daily/ ./restore/ --include 'r007-2*.sql.gz.age'
+age -d -i ~/r007-age-key.txt -o dump.sql.gz r007-<UTC>.sql.gz.age
+
+# 2. (rebuilding a lost VPS: bootstrap.sh + provision-stack.sh first, restore shared/.env from r007-env-<UTC>.tar.gz.age, then continue)
+sudo -u deploy r007-deploy status ; sudo supervisorctl stop 'r007:*'
+
+# 3. load (dump is made with --databases, so it recreates the schema and USEs it)
+gzip -dc dump.sql.gz | sudo mysql
+
+# 4. PITR: replay archived binlogs as on Local, with mysqlbinlog ... | sudo mysql
+sudo supervisorctl start 'r007:*' ; curl -fsS http://127.0.0.1:8088/up
+```
+
+Then re-check sync with the property (the site should return to ONLINE; the outbox re-drives anything unacknowledged).
+
+## Automated restore test (Cloud, monthly cron) and evidence
+
+`r007-restore-test` restores the newest local dump (`--from-remote` uses the off-server copy, needs `--age-identity FILE` for `.age`)
+into a throwaway database, checks the table count and Laravel `migrations` table, drops it, and appends one JSON line
+(result, seconds, backup age) to `/var/log/r007/restore-test.log`. A failing result is an incident.
+
+## Quarterly restore-test checklist (both nodes, IT lead + one witness)
+
+Record results in the site record. **A failed test is a SEV2 incident.**
+
+- [ ] Date/time, tester, node (Local / Cloud), backup file used (name, size, timestamp, where it came from: local / NAS / off-site)
+- [ ] For the Local node **use the NAS copy** and, once a year, the **off-site** copy (proves the chain end to end)
+- [ ] Checksum verified (`.sha256`); decryption with the vault key worked (off-site)
+- [ ] `restore-mysql.ps1 -VerifyOnly` (Local) / `r007-restore-test --from-remote --age-identity ...` (Cloud) passed
+- [ ] Duration recorded = **RTO evidence** (target <= 4 h for a full disaster restore); backup age = **RPO evidence**
+- [ ] Row counts sanity-checked against production for key tables (orders, payments, bookings, audit_log, sync outbox) - within the expected window
+- [ ] Once a year: full rehearsal - restore to a spare machine, start the app against it, log in, view yesterday's sales
+- [ ] PITR replay rehearsed to a chosen minute (half-yearly)
+- [ ] Off-site retention/versioning and the `age` key custody confirmed (two people can find the key)
+- [ ] Issues, fixes and follow-ups filed; runbook updated
+
+## Gaps (tracked)
+
+- 15-minute binlog shipping (RPO target) is not scheduled yet; today binlogs ship with each nightly run (RPO = up to 24 h unless the disk survives).
+  Add a 15-minute task/cron that runs the binlog part only.
+- Windows off-site encryption uses `age.exe`/`rclone.exe` from PATH (not installed by `install.ps1`).
+- Backup monitoring is local (`status.ps1`, event log); central alerting is a follow-up.

@@ -1,0 +1,35 @@
+# 007 Resort & Spa - MySQL 8.4 (Windows Local node). Rendered by install.ps1; keep in step with mysql/conf.d/r007.cnf.
+[client]
+default-character-set = utf8mb4
+
+[mysqld]
+basedir = @@BASEDIR@@
+datadir = @@DATADIR@@
+log-error = @@LOGDIR@@/mysql-error.log
+
+# Localhost only. Nothing but the app on this machine talks to MySQL (POS/tablets never do).
+bind-address = 127.0.0.1
+mysqlx = OFF
+skip_name_resolve = ON
+local_infile = OFF
+max_connections = 300
+
+character-set-server = utf8mb4
+collation-server = utf8mb4_0900_ai_ci
+default-time-zone = '+00:00'
+sql_mode = ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
+
+default-storage-engine = InnoDB
+innodb_file_per_table = ON
+innodb_buffer_pool_size = @@BUFFERPOOL@@
+innodb_redo_log_capacity = 512M
+innodb_flush_log_at_trx_commit = 1
+sync_binlog = 1
+
+# Binary log for point-in-time recovery (backup script archives closed logs).
+server-id = 1
+log_bin = r007-binlog
+binlog_format = ROW
+binlog_row_image = FULL
+binlog_expire_logs_seconds = 1209600
+max_binlog_size = 256M

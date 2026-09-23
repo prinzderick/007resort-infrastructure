@@ -29,3 +29,7 @@ backups/
 Thumbs.db
 .idea/
 .vscode/
+
+# Local node dev state (scripts/dev/local-node.sh) and test scratch
+.run/
+.r007-test/

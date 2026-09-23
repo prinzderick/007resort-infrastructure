@@ -1,0 +1,6 @@
+# Managed by 007resort-infrastructure. Server time is UTC (Africa/Lagos is UTC+1).
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# Nightly backup 01:30 UTC = 02:30 Lagos; restore test on the 1st of each month 04:00 UTC.
+30 1 * * * root /usr/local/sbin/r007-backup >> /var/log/r007/backup.log 2>&1
+0 4 1 * * root /usr/local/sbin/r007-restore-test >> /var/log/r007/restore-test.log 2>&1

@@ -1,9 +1,16 @@
 # 007 Resort & Spa - local development dependencies (NOT for production).
 #
+# Brings up MySQL 8.4 + Redis 7 + Mailpit. The Laravel app itself runs on the host
+# (php artisan serve) or via scripts/dev/local-node.sh; the optional `reverb` profile
+# runs the WebSocket server in a container against a checkout of 007resort-api.
+#
 # Usage (from repository root):
 #   cp compose/dev/.env.example compose/dev/.env   # then edit values
 #   docker compose -f compose/dev/docker-compose.yml --env-file compose/dev/.env up -d
+#   docker compose ... --profile reverb up -d      # + Reverb (needs R007_API_DIR in .env)
 #
+# Point the API at these with: DB_HOST=127.0.0.1 DB_PORT=3306 REDIS_HOST=127.0.0.1
+# MAIL_MAILER=smtp MAIL_HOST=127.0.0.1 MAIL_PORT=1025.
 # Credentials come from the .env file; nothing secret is stored here.
 name: r007-dev
 
@@ -23,7 +30,7 @@ services:
       - --collation-server=utf8mb4_0900_ai_ci
       - --default-time-zone=+00:00
     ports:
-      - "${MYSQL_PORT:-3306}:3306"
+      - "${MYSQL_BIND:-127.0.0.1}:${MYSQL_PORT:-3306}:3306"
     volumes:
       - mysql-data:/var/lib/mysql
       - ../../mysql/conf.d/r007.cnf:/etc/mysql/conf.d/r007.cnf:ro
@@ -40,7 +47,7 @@ services:
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "${REDIS_BIND:-127.0.0.1}:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis-data:/data
     healthcheck:
@@ -49,16 +56,46 @@ services:
       timeout: 3s
       retries: 5
 
-  # Optional: catches outgoing mail in development. Start with:
-  #   docker compose ... --profile mail up -d
+  # Catches outgoing mail in development; UI on http://localhost:8025.
   mailpit:
     image: axllent/mailpit:latest
     container_name: r007-mailpit
-    profiles: ["mail"]
     restart: unless-stopped
     ports:
-      - "${MAILPIT_SMTP_PORT:-1025}:1025"
-      - "${MAILPIT_UI_PORT:-8025}:8025"
+      - "${MAILPIT_BIND:-127.0.0.1}:${MAILPIT_SMTP_PORT:-1025}:1025"
+      - "${MAILPIT_BIND:-127.0.0.1}:${MAILPIT_UI_PORT:-8025}:8025"
+
+  # Optional: Laravel Reverb WebSocket server (profile "reverb"). Mounts your local
+  # 007resort-api checkout; tablets on the LAN connect to <host-ip>:${REVERB_PORT}.
+  # Set REVERB_BIND=0.0.0.0 to expose it to the LAN (demo only).
+  reverb:
+    image: serversideup/php:8.4-cli
+    container_name: r007-reverb
+    profiles: ["reverb"]
+    restart: unless-stopped
+    working_dir: /var/www/html
+    command: ["php", "artisan", "reverb:start", "--host=0.0.0.0", "--port=8080"]
+    environment:
+      APP_NODE: local
+      APP_ENV: local
+      DB_HOST: mysql
+      DB_DATABASE: ${MYSQL_DATABASE:-r007_dev}
+      DB_USERNAME: ${MYSQL_USER:-r007_app}
+      DB_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD in compose/dev/.env}
+      REDIS_HOST: redis
+      BROADCAST_CONNECTION: reverb
+      REVERB_APP_ID: ${REVERB_APP_ID:-r007-dev}
+      REVERB_APP_KEY: ${REVERB_APP_KEY:-r007-dev-key}
+      REVERB_APP_SECRET: ${REVERB_APP_SECRET:-r007-dev-secret}
+      REVERB_SERVER_HOST: 0.0.0.0
+      REVERB_SERVER_PORT: "8080"
+    volumes:
+      - ${R007_API_DIR:-../../../007resort-api}:/var/www/html
+    ports:
+      - "${REVERB_BIND:-127.0.0.1}:${REVERB_PORT:-8081}:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
 
 volumes:
   mysql-data:

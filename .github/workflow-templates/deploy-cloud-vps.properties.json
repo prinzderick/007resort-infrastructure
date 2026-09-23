@@ -1,0 +1,7 @@
+{
+  "name": "Deploy Cloud node (VPS)",
+  "description": "Build a Laravel release package and deploy it to the 007 Resort & Spa Cloud VPS over SSH (atomic release, migrate, health-gated, auto-rollback).",
+  "iconName": "octicon server",
+  "categories": ["Deployment", "PHP"],
+  "filePatterns": ["^artisan$"]
+}

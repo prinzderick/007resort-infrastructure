@@ -1,0 +1,7 @@
+{
+  "name": "Build release packages (Cloud + Local)",
+  "description": "Build tar.gz (Cloud VPS) and zip (Local Windows node) packages of the Laravel app on version tags.",
+  "iconName": "octicon package",
+  "categories": ["Continuous integration", "PHP"],
+  "filePatterns": ["^artisan$"]
+}

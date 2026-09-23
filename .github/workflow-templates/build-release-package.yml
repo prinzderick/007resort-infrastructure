@@ -1,0 +1,50 @@
+# TEMPLATE - copy into 007resort-api/.github/workflows/.
+# Builds the release package for BOTH nodes on every version tag and attaches it to the GitHub release:
+#   r007-<sha>.tar.gz  -> Cloud node (used by deploy-cloud-vps.yml / r007-deploy)
+#   r007-<sha>.zip     -> Local node (Windows): download, then run  update.ps1 -Package <zip>
+# No secrets are used. The Local node is never deployed to from GitHub (it accepts no inbound
+# internet traffic): an administrator on the property network pulls the package.
+name: Build release packages
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          extensions: mbstring, intl, pdo_mysql, redis, bcmath, zip, pcntl
+          tools: composer:v2
+      - name: Install production dependencies
+        run: composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
+      - name: Package
+        run: |
+          sha="${GITHUB_SHA::12}"
+          tar --exclude=.git --exclude=.github --exclude=tests --exclude=node_modules --exclude='.env*' \
+              --exclude="r007-$sha.tar.gz" -czf "r007-$sha.tar.gz" .
+          zip -qr "r007-$sha.zip" . -x '.git/*' '.github/*' 'tests/*' 'node_modules/*' '.env*' "r007-$sha.tar.gz" "r007-$sha.zip"
+          sha256sum "r007-$sha.tar.gz" "r007-$sha.zip" > "r007-$sha.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-packages
+          path: |
+            r007-*.tar.gz
+            r007-*.zip
+            r007-*.sha256
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          files=(r007-*.tar.gz r007-*.zip r007-*.sha256)
+          gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber \
+            || gh release create "$GITHUB_REF_NAME" "${files[@]}" --generate-notes

@@ -20,7 +20,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: docker compose config
-        run: docker compose -f compose/dev/docker-compose.yml --env-file compose/dev/.env.example config -q
+        run: |
+          docker compose -f compose/dev/docker-compose.yml --env-file compose/dev/.env.example config -q
+          docker compose -f compose/dev/docker-compose.yml --env-file compose/dev/.env.example --profile reverb config -q
 
   yaml:
     name: YAML lint + actionlint
@@ -34,7 +36,26 @@ jobs:
       - name: actionlint
         run: |
           bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
-          ./actionlint -color
+          ./actionlint -color .github/workflows/*.yml .github/workflow-templates/*.yml
+
+  shell:
+    name: shellcheck + bash -n + dry-run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: shellcheck
+        run: |
+          sudo apt-get update -y && sudo apt-get install -y shellcheck
+          shellcheck -x scripts/lib/*.sh scripts/dev/*.sh scripts/vps/*.sh
+      - name: bash -n
+        run: for f in scripts/lib/*.sh scripts/dev/*.sh scripts/vps/*.sh; do bash -n "$f"; done
+      - name: dry-run smoke tests
+        run: |
+          scripts/vps/bootstrap.sh --ssh-pubkey 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexample ci' --dry-run
+          scripts/vps/provision-stack.sh --domain api.example.com --email ops@example.com --dry-run
+          scripts/vps/backup.sh --dry-run --config /nonexistent
+          scripts/vps/restore-test.sh --dry-run
+          R007_API_DIR="$PWD" scripts/dev/local-node.sh up --dry-run
 
   powershell:
     name: PSScriptAnalyzer
@@ -46,7 +67,15 @@ jobs:
         run: |
           Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
           Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
-          Invoke-ScriptAnalyzer -Path scripts -Recurse -Severity Error -EnableExit
+          $r = Invoke-ScriptAnalyzer -Path scripts -Recurse -Settings ./PSScriptAnalyzerSettings.psd1
+          $r | Format-Table RuleName, Severity, ScriptName, Line, Message -AutoSize -Wrap
+          if ($r) { exit 1 }
+      - name: Dry-run smoke test (non-Windows flow check)
+        shell: pwsh
+        run: |
+          $env:R007_ROOT = "$PWD/.r007-test"
+          ./scripts/windows/install.ps1 -DryRun
+          ./scripts/windows/update.ps1 -Package ./r007-test.zip -DryRun
 
   secret-scan:
     name: Secret scan (gitleaks)
