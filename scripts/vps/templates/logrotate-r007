@@ -8,13 +8,3 @@
     notifempty
     copytruncate
 }
-@@APP_ROOT@@/shared/storage/logs/*.log {
-    daily
-    rotate 30
-    compress
-    delaycompress
-    missingok
-    notifempty
-    copytruncate
-    su @@DEPLOY_USER@@ @@DEPLOY_USER@@
-}

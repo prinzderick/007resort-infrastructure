@@ -3,43 +3,53 @@
 # Installed by provision-stack.sh as /usr/local/sbin/r007-backup and run by /etc/cron.d/r007-backup.
 #
 #   sudo scripts/vps/backup.sh [--dry-run] [--config /etc/r007/backup.env] [--app-root /var/www/r007]
+#   (--app-root = APP_ROOT_BASE: the API lives in <root>/api, site/admin next to it)
 #
 # Config (/etc/r007/backup.env - paths/remote NAMES only, no secrets):
 #   RCLONE_REMOTE=remote:bucket/path   any rclone remote (S3, B2, GCS, SFTP, ...). Credentials live in root's rclone.conf.
 #   AGE_RECIPIENT=age1...              age PUBLIC key; dumps + .env are encrypted before upload. The private key is kept
 #                                      OFF this server (password manager / safe). Empty => uploaded unencrypted (a crypt remote is then required).
 #   LOCAL_RETENTION_DAYS=7  REMOTE_RETENTION_DAYS=35  HEALTHCHECK_URL=https://... (optional dead-man's-switch ping)
+#   MEDIA_BACKUP=archive|off           nightly tar of the uploaded media (default archive)
 #
 # Produces in /var/backups/r007: r007-<UTC>.sql.gz (mysqldump --single-transaction, routines/triggers/events,
-# binlog position for PITR), a .sha256, encrypted copy of shared/.env, and closed binlogs. A dump is only accepted
-# after gzip -t and the "Dump completed" trailer check. A failed run exits non-zero (cron mails root / healthcheck pings /fail).
+# binlog position for PITR), a .sha256, r007-media-<UTC>.tar.gz (the API's shared/storage/app/public: CMS uploads),
+# an ENCRYPTED-ONLY r007-env-<UTC>.tar.gz (the .env of every app + /etc/r007/stack.env + the admin basic-auth secret),
+# and closed binlogs. A dump is only accepted after gzip -t and the "Dump completed" trailer check.
+# A failed run exits non-zero (cron mails root / healthcheck pings /fail).
 set -euo pipefail
 SCRIPT_TAG="backup"; export SCRIPT_TAG
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 # shellcheck source=../lib/common.sh
 # shellcheck source-path=SCRIPTDIR
 source "$SCRIPT_DIR/../lib/common.sh"
+# shellcheck source=../lib/stack.sh
+# shellcheck source-path=SCRIPTDIR
+source "$SCRIPT_DIR/../lib/stack.sh"
+stack_load
 
-CONFIG="/etc/r007/backup.env"; APP_ROOT="/var/www/r007"; BACKUP_DIR="/var/backups/r007"; STATE_DIR="/var/lib/r007-backup"
+CONFIG="/etc/r007/backup.env"; APP_ROOT="$APP_ROOT_BASE"; BACKUP_DIR="/var/backups/r007"; STATE_DIR="/var/lib/r007-backup"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --config) CONFIG="${2:?}"; shift 2 ;;
     --app-root) APP_ROOT="${2:?}"; shift 2 ;;
     --backup-dir) BACKUP_DIR="${2:?}"; shift 2 ;;
     --dry-run|-n) DRY_RUN=1; shift ;;
-    -h|--help) sed -n '2,19p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,23p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown option: $1" ;;
   esac
 done
 
-RCLONE_REMOTE=""; AGE_RECIPIENT=""; LOCAL_RETENTION_DAYS=7; REMOTE_RETENTION_DAYS=35; HEALTHCHECK_URL=""
+RCLONE_REMOTE=""; AGE_RECIPIENT=""; LOCAL_RETENTION_DAYS=7; REMOTE_RETENTION_DAYS=35; HEALTHCHECK_URL=""; MEDIA_BACKUP="archive"
 if [[ -f "$CONFIG" ]]; then
   # shellcheck disable=SC1090
   source "$CONFIG"
 elif ! is_dry; then
   die "config $CONFIG not found (copy /etc/r007/backup.env.example)"
 fi
-ENV_FILE="$APP_ROOT/shared/.env"
+# Layout: $APP_ROOT/{api,site,admin}/shared/.env ; media = the API's public disk (served by nginx as /storage).
+ENV_FILE="$APP_ROOT/api/shared/.env"
+MEDIA_DIR="$APP_ROOT/api/shared/storage/app/public"
 DB_NAME="r007"; [[ -f "$ENV_FILE" ]] && DB_NAME="$(env_get "$ENV_FILE" DB_DATABASE)"
 [[ "$DB_NAME" =~ ^[A-Za-z0-9_]+$ ]] || die "bad DB name"
 
@@ -81,14 +91,43 @@ prepare_upload() { # prepare_upload FILE : print the file to upload (encrypted c
 [[ -n "$AGE_RECIPIENT" ]] || warn "AGE_RECIPIENT empty: artifacts are uploaded UNENCRYPTED - only acceptable with an rclone crypt remote"
 UPLOADS+=("$(prepare_upload "$DUMP")")
 
-# shared/.env (secrets!) is only ever uploaded encrypted.
+# Uploaded media (CMS images etc.). Small archive of public content; encrypted too when a key is configured.
+if [[ "$MEDIA_BACKUP" == "archive" ]]; then
+  MEDIABAK="$BACKUP_DIR/r007-media-$STAMP.tar.gz"
+  log "media: $MEDIA_DIR -> $MEDIABAK"
+  if is_dry; then echo "[dry-run] tar -czf $MEDIABAK -C $MEDIA_DIR . (encrypted when AGE_RECIPIENT is set)" >&2; else
+    if [[ -d "$MEDIA_DIR" ]]; then
+      rc=0; tar -czf "$MEDIABAK.partial" -C "$MEDIA_DIR" . || rc=$?
+      # tar exits 1 when a file changed while being read (an upload during the run): the archive is still usable
+      [[ "$rc" -le 1 ]] || die "media archive failed (tar exit $rc)"
+      tar -tzf "$MEDIABAK.partial" >/dev/null || die "media archive is corrupt"
+      chmod 600 "$MEDIABAK.partial"; mv "$MEDIABAK.partial" "$MEDIABAK"
+      log "media ok: $(du -h "$MEDIABAK" | cut -f1)"
+    else
+      warn "media dir $MEDIA_DIR missing (API not deployed yet?) - skipped"; MEDIABAK=""
+    fi
+  fi
+  if [[ -n "$MEDIABAK" ]]; then UPLOADS+=("$(prepare_upload "$MEDIABAK")"); fi
+else
+  warn "MEDIA_BACKUP=off: uploaded media is NOT backed up"
+fi
+
+# Every app's .env (+ stack.env, admin basic-auth secret) holds secrets: only ever uploaded encrypted.
 if [[ -f "$ENV_FILE" || -n "${DRY_RUN:-}" ]]; then
   if [[ -n "$AGE_RECIPIENT" ]]; then
     ENVBAK="$BACKUP_DIR/r007-env-$STAMP.tar.gz"
-    if ! is_dry; then tar -czf "$ENVBAK" -C "$(dirname "$ENV_FILE")" "$(basename "$ENV_FILE")"; chmod 600 "$ENVBAK"; fi
+    if ! is_dry; then
+      envfiles=(); for a in api site admin; do [[ -f "$APP_ROOT/$a/shared/.env" ]] && envfiles+=("$a/shared/.env"); done
+      etcfiles=(); for f in r007/stack.env r007/admin-basic-auth.secret; do [[ -f "/etc/$f" ]] && etcfiles+=("$f"); done
+      targs=(-C "$APP_ROOT" "${envfiles[@]}")
+      if [[ ${#etcfiles[@]} -gt 0 ]]; then targs+=(-C /etc "${etcfiles[@]}"); fi
+      tar -czf "$ENVBAK" "${targs[@]}"
+      chmod 600 "$ENVBAK"
+    fi
     UPLOADS+=("$(prepare_upload "$ENVBAK")")
+    is_dry || rm -f "$ENVBAK"   # secrets: keep only the encrypted copy on disk
   else
-    warn "not backing up .env: refusing to upload secrets without encryption"
+    warn "not backing up .env files: refusing to upload secrets without encryption"
   fi
 fi
 

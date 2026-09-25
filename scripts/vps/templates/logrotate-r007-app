@@ -1,0 +1,11 @@
+# Managed by 007resort-infrastructure. Laravel logs of @@APP@@ (owned by the app user, group-writable via setgid).
+@@APP_DIR@@/shared/storage/logs/*.log {
+    daily
+    rotate 30
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+    su @@APP_USER@@ @@APP_USER@@
+}
