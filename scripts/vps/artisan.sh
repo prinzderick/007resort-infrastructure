@@ -21,7 +21,7 @@ case "${1:-}" in ""|-h|--help) sed -n '2,10p' "${BASH_SOURCE[0]}" | sed 's/^# \{
 APP="$1"; shift
 app_valid "$APP" || die "app must be api|site|admin"
 [[ $# -gt 0 ]] || die "give an artisan command"
-stack_load
+stack_load ""
 app_enabled "$APP" || die "app $APP is not enabled on this server"
 DIR="$(app_dir "$APP")/current"
 [[ -f "$DIR/artisan" ]] || die "$APP is not deployed yet ($DIR/artisan missing)"

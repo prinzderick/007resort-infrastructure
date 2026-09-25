@@ -94,7 +94,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "$CMD" in ""|-h|--help|help) usage; exit 0 ;; *) : ;; esac
-stack_load
+stack_load ""
 [[ "$KEEP" =~ ^[0-9]+$ && "$KEEP" -ge 2 ]] || die "--keep must be an integer >= 2"
 
 # select_app APP : point the per-app globals at APP

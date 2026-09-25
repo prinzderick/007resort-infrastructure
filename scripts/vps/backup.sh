@@ -26,7 +26,7 @@ source "$SCRIPT_DIR/../lib/common.sh"
 # shellcheck source=../lib/stack.sh
 # shellcheck source-path=SCRIPTDIR
 source "$SCRIPT_DIR/../lib/stack.sh"
-stack_load
+stack_load ""
 
 CONFIG="/etc/r007/backup.env"; APP_ROOT="$APP_ROOT_BASE"; BACKUP_DIR="/var/backups/r007"; STATE_DIR="/var/lib/r007-backup"
 while [[ $# -gt 0 ]]; do

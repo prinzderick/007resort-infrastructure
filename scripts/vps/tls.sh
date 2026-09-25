@@ -78,7 +78,8 @@ for a in "${APPS[@]}"; do
   for n in $(app_server_names "$a"); do args+=(-d "$n"); done
   [[ "$FORCE" == "0" ]] || args+=(--force-renewal)
   [[ "$ACME_TEST" == "0" ]] || args+=(--dry-run)
-  log "certbot: $a ($(app_server_names "$a"))$([[ "$ACME_TEST" == "1" ]] && echo ' [staging test, nothing is saved]' || true)"
+  note=""; if [[ "$ACME_TEST" == "1" ]]; then note=" [staging test, nothing is saved]"; fi
+  log "certbot: $a ($(app_server_names "$a"))$note"
   run certbot "${args[@]}"
 done
 

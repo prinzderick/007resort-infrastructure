@@ -5,7 +5,8 @@
 #
 #   scripts/vps/check-nginx.sh [--nginx /path/to/nginx] [--routes]
 #
-# --routes additionally starts nginx unprivileged on high ports (public 127.0.0.1:18080/18443, loopback 18088-18090) with
+# Runs unprivileged: the public listeners are moved to 127.0.0.1:18080/18443 and the loopback ones to 18088-18090.
+# --routes additionally starts nginx on those ports with
 # PHP replaced by a marker, and asserts the behaviour: routing (robots/sitemap reach Laravel, /build and /storage/cms cache
 # headers, dotfiles/.php denied), body-size limits (api/admin 12M, site 4M), HTTP->HTTPS + www redirects, HSTS and security
 # headers on every response type, unknown-host rejection, ACME path, admin allow-list (403), basic auth (401), noindex,
@@ -37,6 +38,7 @@ need_cmd openssl
 
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 export R007_NGINX_ETC="$T/etc/nginx" R007_LE_DIR="$T/le" R007_ACME_ROOT="$T/acme"
+export R007_PORT_API=18088 R007_PORT_SITE=18089 R007_PORT_ADMIN=18090
 NGINX_ETC="$R007_NGINX_ETC"; LE_DIR="$R007_LE_DIR"; ACME_ROOT="$R007_ACME_ROOT"
 mkdir -p "$NGINX_ETC"/{snippets,sites-available,sites-enabled,conf.d} "$ACME_ROOT" "$T/logs"
 
@@ -86,12 +88,22 @@ mk_cert() { # mk_cert DOMAIN
     -keyout "$LE_DIR/live/$1/privkey.pem" -out "$LE_DIR/live/$1/fullchain.pem" >/dev/null 2>&1
 }
 
+# to_high_ports FILE... : run unprivileged (nginx -t binds the listen sockets): public 80/443 -> 127.0.0.1:18080/18443, no IPv6
+to_high_ports() {
+  local f
+  for f in "$@"; do
+    sed -i.bak -E '/listen \[::\]/d; s/listen 80( default_server)?;/listen 127.0.0.1:18080\1;/; s/listen 443 ssl( http2| default_server)?;/listen 127.0.0.1:18443 ssl\1;/' "$f"
+    rm -f "$f.bak"
+  done
+}
+
 n_ok=0
 render_and_test() { # render_and_test LABEL
   local label="$1" a
   rm -f "$NGINX_ETC"/sites-available/* "$NGINX_ETC"/sites-enabled/*
   nginx_render_common
   for a in $(enabled_apps); do nginx_render_app "$a" 2>/dev/null; done
+  to_high_ports "$NGINX_ETC"/sites-available/*.conf "$NGINX_ETC/conf.d/r007-common.conf"
   if "$NGINX_BIN" -t -c "$NGINX_ETC/nginx.conf" -p "$T" >"$T/nginx-t.log" 2>&1; then
     log "OK   nginx -t: $label"; n_ok=$((n_ok+1))
   else
@@ -127,7 +139,6 @@ log "all $n_ok nginx configurations validated"
 # --routes : behavioural test against a running nginx
 # ---------------------------------------------------------------------------------------------------------------
 [[ "$ROUTES" == "1" ]] || exit 0
-export R007_PORT_API=18088 R007_PORT_SITE=18089 R007_PORT_ADMIN=18090
 APP_ROOT_BASE="$T/www"
 ADMIN_ALLOW_IPS="203.0.113.7"; ADMIN_BASIC_AUTH=on; SITE_WWW=on
 SITE_DOMAIN=example.com; API_DOMAIN=api.example.com; ADMIN_DOMAIN=admin.example.com
@@ -149,11 +160,7 @@ echo SECRET >"$T/www/api/current/public/.env"
 head -c 6000 /dev/zero | tr '\0' 'a' >"$T/www/api/current/public/big.txt"
 head -c 11000000 /dev/zero >"$T/11m"; head -c 13000000 /dev/zero >"$T/13m"; head -c 5000000 /dev/zero >"$T/5m"
 
-# move the public listeners to unprivileged ports
-for f in "$NGINX_ETC"/sites-available/*.conf "$NGINX_ETC/conf.d/r007-common.conf"; do
-  sed -i.bak -E '/listen \[::\]/d; s/listen 80( default_server)?;/listen 127.0.0.1:18080\1;/; s/listen 443 ssl( http2| default_server)?;/listen 127.0.0.1:18443 ssl\1;/' "$f"
-  rm -f "$f.bak"
-done
+to_high_ports "$NGINX_ETC"/sites-available/*.conf "$NGINX_ETC/conf.d/r007-common.conf"
 "$NGINX_BIN" -t -c "$NGINX_ETC/nginx.conf" -p "$T" >"$T/nginx-t.log" 2>&1 || { sed 's/^/    /' "$T/nginx-t.log" >&2; die "routes: nginx -t failed"; }
 stop_nginx() { if [[ -f "$T/nginx.pid" ]]; then kill "$(cat "$T/nginx.pid")" 2>/dev/null || true; fi; }
 trap 'stop_nginx; rm -rf "$T"' EXIT
@@ -202,8 +209,7 @@ expect "admin allow-list blocks other sources" "403" "$(code https://admin.examp
 ADMIN_ALLOW_IPS=""
 nginx_render_app admin >/dev/null 2>&1
 printf 'location ~ ^/index\\.php(/|$) { default_type text/plain; include %s/snippets/r007-admin-headers.conf; return 200 "PHP:$uri\\n"; }\nlocation ~ \\.php$ { return 404; }\n' "$NGINX_ETC" >"$NGINX_ETC/snippets/r007-admin-php.conf"
-sed -i.bak -E '/listen \[::\]/d; s/listen 80( default_server)?;/listen 127.0.0.1:18080\1;/; s/listen 443 ssl( http2| default_server)?;/listen 127.0.0.1:18443 ssl\1;/' "$NGINX_ETC/sites-available/r007-admin.conf"
-rm -f "$NGINX_ETC/sites-available/r007-admin.conf.bak"
+to_high_ports "$NGINX_ETC/sites-available/r007-admin.conf"
 "$NGINX_BIN" -s reload -c "$NGINX_ETC/nginx.conf" -p "$T"; sleep 1
 expect "admin without credentials -> 401" "401" "$(code https://admin.example.com:18443/login)"
 expect "admin wrong credentials -> 401" "401" "$(code -u u:bad https://admin.example.com:18443/login)"
