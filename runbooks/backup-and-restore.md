@@ -19,6 +19,10 @@
 **Targets (proposal): RPO <= 15 min (needs binlog shipping every 15 min - not yet automated, see "Gaps"), RTO <= 4 h.**
 A backup older than 26 hours is an incident (`status.ps1` flags it; on Cloud set `HEALTHCHECK_URL` for a dead-man's-switch).
 
+**Cloud backups cover three things** (all age-encrypted, uploaded off-server): the MySQL dump + binlogs (`r007-<UTC>.sql.gz.age`), the **uploaded media**
+(`r007-media-<UTC>.tar.gz.age` = the API's `shared/storage/app/public`, i.e. CMS images) and the **`.env` files** of api/site/admin + `stack.env` (`r007-env-<UTC>.tar.gz.age`, only ever uploaded encrypted).
+`r007-restore-test` checks all three. Set `MEDIA_BACKUP=off` in `backup.env` only if you back the media directory up another way.
+
 ### Credentials and encryption (no secrets in scripts)
 
 - Windows: MySQL credentials only in `C:\R007\secrets\mysql-backup.cnf` (`--defaults-extra-file`; ACL Administrators/SYSTEM).
@@ -84,8 +88,9 @@ C:\R007\scripts\restore-mysql.ps1 -BackupFile <file> -Live -ConfirmDatabaseName 
 rclone copy r007-offsite:007resort-cloud-backups/daily/ ./restore/ --include 'r007-2*.sql.gz.age'
 age -d -i ~/r007-age-key.txt -o dump.sql.gz r007-<UTC>.sql.gz.age
 
-# 2. (rebuilding a lost VPS: bootstrap.sh + provision-stack.sh first, restore shared/.env from r007-env-<UTC>.tar.gz.age, then continue)
-sudo -u deploy r007-deploy status ; sudo supervisorctl stop 'r007:*'
+# 2. (rebuilding a lost VPS: bootstrap.sh + provision-stack.sh first; restore the .env files (api/site/admin) + stack.env from r007-env-<UTC>.tar.gz.age; unpack the
+#     media archive: tar -xzf r007-media-<UTC>.tar.gz -C /var/www/r007/api/shared/storage/app/public ; then redeploy the three apps)
+r007-deploy status ; sudo supervisorctl stop 'r007:*'
 
 # 3. load (dump is made with --databases, so it recreates the schema and USEs it)
 gzip -dc dump.sql.gz | sudo mysql

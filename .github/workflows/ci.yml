@@ -52,10 +52,27 @@ jobs:
       - name: dry-run smoke tests
         run: |
           scripts/vps/bootstrap.sh --ssh-pubkey 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexample ci' --dry-run
-          scripts/vps/provision-stack.sh --domain api.example.com --email ops@example.com --dry-run
+          scripts/vps/provision-stack.sh --api-domain api.example.com --site-domain example.com \
+            --admin-domain admin.example.com --email ops@example.com --dry-run
+          scripts/vps/provision-stack.sh --domain api.example.com --dry-run   # API-only / legacy flag
+          scripts/vps/tls.sh --email ops@example.com --config env/stack.env.example --dry-run
+          R007_STACK_ENV=env/stack.env.example scripts/vps/smoke.sh --mode local --dry-run
+          R007_STACK_ENV=env/stack.env.example scripts/vps/deploy.sh all --api /tmp/a.tar.gz --site /tmp/s.tar.gz --admin /tmp/m.tar.gz --dry-run
           scripts/vps/backup.sh --dry-run --config /nonexistent
           scripts/vps/restore-test.sh --dry-run
           R007_API_DIR="$PWD" scripts/dev/local-node.sh up --dry-run
+
+  nginx:
+    name: nginx templates (nginx -t + routing test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install nginx
+        run: sudo apt-get update -y && sudo apt-get install -y nginx
+      - name: Render every template and run nginx -t
+        run: scripts/vps/check-nginx.sh --nginx /usr/sbin/nginx
+      - name: Routing/limits/headers test against a running nginx
+        run: scripts/vps/check-nginx.sh --nginx /usr/sbin/nginx --routes
 
   powershell:
     name: PSScriptAnalyzer

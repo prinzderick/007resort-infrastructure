@@ -24,9 +24,11 @@ The backend is **Laravel (PHP 8.4) + MySQL 8.4 + Redis** running as two nodes fr
 
 ### Cloud node - Ubuntu VPS
 
-- nginx + PHP-FPM 8.4, MySQL 8.4 and Redis on localhost, Supervisor for queue/sync/Reverb, cron scheduler, certbot TLS,
-  nginx WebSocket proxy for Reverb, ufw 22/80/443 + fail2ban, atomic release deploys with rollback, nightly encrypted
-  off-server backup (rclone) and a monthly automated restore test.
+- **One VPS hosts the whole online side**: the API (`api.<domain>`, Reverb websockets, media), the public website (`<domain>`) and
+  the admin portal (`admin.<domain>`), each with its own nginx server block, PHP-FPM pool + system user, `.env`, release tree,
+  atomic deploys with smoke-gated automatic rollback (`r007-deploy <api|site|admin|all>`), certbot TLS for all three names, MySQL 8.4 and Redis
+  on localhost, Supervisor + cron for the API, ufw 22/80/443 + fail2ban, nightly encrypted off-server backup (database, media, env files) and a monthly
+  automated restore test. Start with the **[VPS runbook](docs/VPS_RUNBOOK.md)**.
 
 ```
  [POS/Tablets/KDS/Phones]                  [Staff workstations]
@@ -39,8 +41,8 @@ The backend is **Laravel (PHP 8.4) + MySQL 8.4 + Redis** running as two nodes fr
                                | outbound HTTPS only (sync, heartbeat, off-site backup)
                                v
    +------------------ CLOUD VPS (Ubuntu) ---------------------------+
-   |  nginx -> PHP-FPM -> Laravel (APP_NODE=cloud)  MySQL  Redis       |
-   |  Supervisor: queue, sync, reverb    cron: schedule:run             |
+   |  nginx -> PHP-FPM pools -> api (APP_NODE=cloud) | site | admin      |
+   |  MySQL  Redis   Supervisor (api): queue, sync, reverb  cron: schedule:run |
    +-------------------------------------------------------------------+
 ```
 
@@ -50,10 +52,11 @@ The backend is **Laravel (PHP 8.4) + MySQL 8.4 + Redis** running as two nodes fr
 | --- | --- |
 | [`scripts/windows/`](scripts/windows/) | **Local node**: `install.ps1`, `update.ps1` (deploy/rollback), `status.ps1`, `uninstall.ps1`, `backup-mysql.ps1`, `restore-mysql.ps1`, `cleanup-logs.ps1` |
 | [`scripts/dev/local-node.sh`](scripts/dev/local-node.sh) | **Demo Local node on macOS/Linux**: `up` / `stop` / `status` / `logs` / `url` (serve on 0.0.0.0:8080, queue, scheduler, Reverb, LAN URL + QR) |
-| [`scripts/vps/`](scripts/vps/) | **Cloud node**: `bootstrap.sh`, `provision-stack.sh`, `deploy.sh` (installed as `r007-deploy`), `backup.sh`, `restore-test.sh` |
-| [`.github/workflow-templates/`](.github/workflow-templates/) | Templates to copy into `007resort-api`: build release packages, SSH deploy to the VPS (secrets never committed) |
+| [`scripts/vps/`](scripts/vps/) | **Cloud node (api + site + admin)**: `bootstrap.sh`, `provision-stack.sh`, `tls.sh`, `deploy.sh` (`r007-deploy`), `smoke.sh`, `artisan.sh`, `backup.sh`, `restore-test.sh`, `check-nginx.sh` |
+| [`.github/workflow-templates/`](.github/workflow-templates/) | Templates to copy into the app repos: build release packages, `deploy-vps.yml` = build + SSH deploy + public smoke + rollback for api/site/admin (secrets never committed) |
 | [`compose/dev/`](compose/dev/) | Docker Compose for local development: MySQL 8.4, Redis 7, Mailpit, optional Reverb (`--profile reverb`) |
-| [`env/`](env/) | `local.env.example`, `cloud.env.example` - Laravel `.env` templates (placeholders only) |
+| [`env/`](env/) | `local.env.example`, `cloud.env.example`, `site.env.example`, `admin.env.example` - Laravel `.env` templates, `stack.env.example` - VPS domains/options (placeholders only) |
+| [`docs/`](docs/) | [VPS runbook](docs/VPS_RUNBOOK.md): DNS, order of operations, Namecheap notes, mail, admin hardening, CI secrets |
 | [`mysql/conf.d/r007.cnf`](mysql/conf.d/r007.cnf) | Baseline MySQL settings: utf8mb4, UTC, strict sql_mode, InnoDB, ROW binlog for PITR |
 | [`network/`](network/) | Logical network segmentation (VLANs, allowed flows, Wi-Fi, DHCP) |
 | [`runbooks/`](runbooks/) | [Server installation](runbooks/server-installation.md), [backup & restore](runbooks/backup-and-restore.md), [internet outage](runbooks/internet-outage.md), [device onboarding](runbooks/device-registration.md), [node credential rotation](runbooks/node-credential-rotation.md), [incident response](runbooks/incident-response.md), [demo-day checklist](runbooks/demo-day-checklist.md) |

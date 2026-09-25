@@ -1,4 +1,5 @@
-# Managed by 007resort-infrastructure. Laravel scheduler (every minute).
+# Managed by 007resort-infrastructure. Laravel scheduler for the API (every minute), as the API's own user.
+# The site and admin apps define no scheduled commands, so they have no entry.
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-* * * * * @@DEPLOY_USER@@ cd @@APP_ROOT@@/current && /usr/bin/flock -n /tmp/r007-schedule.lock /usr/bin/php artisan schedule:run >> /var/log/r007/scheduler.log 2>&1
+* * * * * @@APP_USER@@ cd @@APP_DIR@@/current && /usr/bin/flock -n /tmp/r007-schedule.lock /usr/bin/php artisan schedule:run >> /var/log/r007/scheduler.log 2>&1

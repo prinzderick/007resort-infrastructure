@@ -1,0 +1,7 @@
+{
+  "name": "Deploy to the 007 Resort & Spa VPS (api | site | admin)",
+  "description": "Build a Laravel release package (composer + npm build in CI), ship it to the VPS over SSH, deploy atomically, smoke-test, and roll back automatically on failure.",
+  "iconName": "octicon server",
+  "categories": ["Deployment", "PHP"],
+  "filePatterns": ["^artisan$"]
+}

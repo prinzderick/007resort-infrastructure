@@ -1,0 +1,145 @@
+# TEMPLATE - copy into the app repo's .github/workflows/ and set APP below:
+#   007resort-api          -> APP: api
+#   007resort-booking-web  -> APP: site
+#   007resort-admin-web    -> APP: admin
+# The same file works for all three. It builds the release package IN CI (composer --no-dev, and `npm ci && npm run build`
+# when the repo has a package.json), ships it to the VPS over SSH and runs the scripts installed by
+# 007resort-infrastructure/scripts/vps/provision-stack.sh (/usr/local/bin/r007-deploy, r007-smoke):
+#   r007-deploy <app> <package>   atomic release, migrate (api only), caches, switch, LOCAL smoke; rolls back by itself on failure
+#   r007-smoke --mode public      TLS / redirects / HSTS / pages over the real domain; a failure here triggers r007-deploy rollback
+# The server has no Node: assets must come from this build.
+#
+# NO values are committed. Create these in GitHub (Settings > Environments > vps-production; protect it with required
+# reviewers so every release needs a human approval):
+#   secrets:  VPS_HOST             hostname or IP of the VPS
+#             VPS_USER             the deploy user (bootstrap.sh --deploy-user, default "deploy")
+#             VPS_SSH_KEY          PRIVATE half of a dedicated deploy key (its public half is in the deploy user's authorized_keys)
+#             VPS_KNOWN_HOSTS      output of `ssh-keyscan -t ed25519 <host>`, verified out of band
+#             SMOKE_ADMIN_BASIC_AUTH  (optional, admin only) "user:password" when ADMIN_BASIC_AUTH=on on the server
+#   variables (optional): VPS_PORT (default 22)
+# Deploy order for a coordinated release: api first, then site and admin (they only call the API's public contract).
+name: Deploy to VPS
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref (tag/branch/sha) to deploy
+        required: true
+        default: main
+
+permissions:
+  contents: read
+
+env:
+  APP: api   # <- api | site | admin : the ONLY line to change per repository
+
+concurrency:
+  group: deploy-vps-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build release package
+    runs-on: ubuntu-latest
+    outputs:
+      package: ${{ steps.pkg.outputs.name }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          extensions: mbstring, intl, pdo_mysql, redis, bcmath, zip, pcntl, gd
+          tools: composer:v2
+      - name: Install production dependencies
+        run: composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
+      - uses: actions/setup-node@v4
+        if: ${{ hashFiles('package.json') != '' }}
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Build front-end assets (site/admin; api has none)
+        if: ${{ hashFiles('package.json') != '' }}
+        run: |
+          npm ci
+          npm run build
+          test -f public/build/manifest.json || { echo "vite build did not produce public/build/manifest.json"; exit 1; }
+      - name: Package
+        id: pkg
+        run: |
+          name="r007-${APP}-${GITHUB_SHA::12}.tar.gz"
+          tar --exclude=.git --exclude=.github --exclude=tests --exclude=node_modules --exclude='.env*' \
+              --exclude='storage/logs/*' --exclude="$name" -czf "$name" .
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          ls -lh "$name"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-package
+          path: ${{ steps.pkg.outputs.name }}
+          retention-days: 7
+
+  deploy:
+    name: Deploy, smoke-test, roll back on failure
+    needs: build
+    runs-on: ubuntu-latest
+    environment: vps-production
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-package
+      - name: Configure SSH (pinned host key)
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Upload and deploy
+        id: deploy
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PORT: ${{ vars.VPS_PORT || '22' }}
+          PACKAGE: ${{ needs.build.outputs.package }}
+        run: |
+          opts=(-i "$HOME/.ssh/deploy_key" -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
+          scp "${opts[@]}" -P "$VPS_PORT" "$PACKAGE" "$VPS_USER@$VPS_HOST:/tmp/$PACKAGE"
+          ssh "${opts[@]}" -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "r007-deploy $APP /tmp/$PACKAGE"
+      - name: Smoke test over the public domain
+        id: smoke
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PORT: ${{ vars.VPS_PORT || '22' }}
+          SMOKE_ADMIN_BASIC_AUTH: ${{ secrets.SMOKE_ADMIN_BASIC_AUTH }}
+        run: |
+          opts=(-i "$HOME/.ssh/deploy_key" -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
+          # The optional admin basic-auth credential travels on stdin, never on a command line.
+          printf '%s\n' "$SMOKE_ADMIN_BASIC_AUTH" | ssh "${opts[@]}" -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" \
+            "r007-smoke --app $APP --mode public --admin-auth-stdin"
+      - name: Roll back (public smoke failed after a successful deploy)
+        if: ${{ failure() && steps.deploy.conclusion == 'success' }}
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PORT: ${{ vars.VPS_PORT || '22' }}
+        run: |
+          opts=(-i "$HOME/.ssh/deploy_key" -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
+          ssh "${opts[@]}" -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "r007-deploy rollback $APP"
+      - name: Clean up
+        if: always()
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PORT: ${{ vars.VPS_PORT || '22' }}
+          PACKAGE: ${{ needs.build.outputs.package }}
+        run: |
+          opts=(-i "$HOME/.ssh/deploy_key" -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
+          ssh "${opts[@]}" -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "rm -f /tmp/$PACKAGE" || true
+          rm -f ~/.ssh/deploy_key ~/.ssh/known_hosts

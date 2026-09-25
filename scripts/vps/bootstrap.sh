@@ -15,11 +15,13 @@
 #
 # Idempotent: safe to re-run. Does: apt upgrade, ufw (22/80/443 only), fail2ban,
 # unattended-upgrades, key-only SSH (root login off), deploy user + a narrow sudoers
-# rule (only reload php-fpm/nginx and control the r007 supervisor group).
-# Docs: architecture/25-vps-production-deployment.md, runbooks/server-installation.md
+# rule (only reload php-fpm/nginx, control the r007 supervisor group, and run r007-tls / r007-backup /
+# r007-restore-test / re-provision + sudoedit of stack.env and backup.env, so no root SSH is needed later). The per-app users/groups and the
+# r007-artisan sudo rule are created later by provision-stack.sh.
+# Docs: docs/VPS_RUNBOOK.md, runbooks/server-installation.md, architecture/25-vps-production-deployment.md
 set -euo pipefail
 SCRIPT_TAG="bootstrap"; export SCRIPT_TAG
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 # shellcheck source=../lib/common.sh
 # shellcheck source-path=SCRIPTDIR
 source "$SCRIPT_DIR/../lib/common.sh"
@@ -80,6 +82,8 @@ SUDOERS_TMP="$(mktemp)"
 cat >"$SUDOERS_TMP" <<SUDO
 # Managed by 007resort-infrastructure/scripts/vps/bootstrap.sh
 $DEPLOY_USER ALL=(root) NOPASSWD: /usr/bin/supervisorctl reread, /usr/bin/supervisorctl update, /usr/bin/supervisorctl status, /usr/bin/supervisorctl status r007\\:*, /usr/bin/supervisorctl restart r007\\:*, /usr/bin/supervisorctl stop r007\\:*, /usr/bin/supervisorctl start r007\\:*, /usr/bin/systemctl reload php8.4-fpm, /usr/bin/systemctl reload nginx
+# Day-2 operations without root SSH (exact commands only, no argument wildcards: the scripts source their config as root):
+$DEPLOY_USER ALL=(root) NOPASSWD: sudoedit /etc/r007/stack.env, sudoedit /etc/r007/backup.env, /usr/local/sbin/r007-tls, /usr/local/sbin/r007-tls --test, /usr/local/sbin/r007-backup, /usr/local/sbin/r007-restore-test, /usr/local/sbin/r007-provision
 SUDO
 if is_dry; then echo "[dry-run] install /etc/sudoers.d/r007-deploy" >&2
 else
@@ -160,4 +164,5 @@ Unattended-Upgrade::Remove-Unused-Dependencies "true";
 UU
 run systemctl enable --now unattended-upgrades
 
-log "done. Next: sudo scripts/vps/provision-stack.sh --domain <api.example.com> --email <ops@example.com>"
+log "done. Next: sudo scripts/vps/provision-stack.sh --api-domain api.example.com --site-domain example.com --admin-domain admin.example.com --email ops@example.com"
+log "(no Node.js is installed: front-end assets are built in CI and shipped in the release packages - see docs/VPS_RUNBOOK.md)"

@@ -31,14 +31,18 @@ The obsolete .NET `install-api-service.ps1` has been removed (ADR-0012).
 
 | Script | Purpose |
 | --- | --- |
-| [`bootstrap.sh`](vps/bootstrap.sh) | Deploy user, key-only SSH, ufw 22/80/443, fail2ban, unattended-upgrades. |
-| [`provision-stack.sh`](vps/provision-stack.sh) | nginx, PHP 8.4-FPM, MySQL 8.4 + Redis on localhost, Supervisor units, cron, certbot, Reverb WebSocket proxy, `.env` with generated secrets, backup crons. |
-| [`deploy.sh`](vps/deploy.sh) | Installed as `r007-deploy`: atomic release + symlink, composer `--no-dev`, `migrate --force`, caches, reload, health check, rollback. |
-| [`backup.sh`](vps/backup.sh) | Nightly dump + binlogs, age encryption, rclone off-server upload with verification, retention. |
-| [`restore-test.sh`](vps/restore-test.sh) | Restore the newest backup into a scratch DB and check it; JSON evidence log. |
-| `templates/` | nginx, supervisor, cron, logrotate templates. |
+| [`bootstrap.sh`](vps/bootstrap.sh) | Deploy user, key-only SSH, ufw 22/80/443, fail2ban, unattended-upgrades, narrow sudoers. |
+| [`provision-stack.sh`](vps/provision-stack.sh) | nginx, PHP 8.4-FPM (a pool + system user per app), MySQL 8.4 + Redis on localhost, api/site/admin release trees + `.env` files with generated secrets, Supervisor + cron (api), nginx server blocks (+ Reverb proxy), backup crons, the `r007-*` commands. Domains from `--*-domain` flags or `/etc/r007/stack.env`. |
+| [`tls.sh`](vps/tls.sh) | `r007-tls`: certbot (HTTP-01) for all three names, re-runnable; `--test` = certbot `--dry-run` against staging, `--dry-run` = print the plan. |
+| [`deploy.sh`](vps/deploy.sh) | `r007-deploy <api\|site\|admin\|all> <package>`: atomic release + symlink, `migrate --force` (api only), caches, storage link, reload, local smoke, **automatic rollback**; also `rollback`, `recache`, `list`, `status`. |
+| [`smoke.sh`](vps/smoke.sh) | `r007-smoke`: health endpoints, `/api/v1/system/info`, site home + media, admin login, TLS expiry, redirects, HSTS; `--mode local` (deploy) / `public` (CI). |
+| [`artisan.sh`](vps/artisan.sh) | `r007-artisan <app> ...`: artisan as the app's own user (e.g. `r007:cms-seed`). |
+| [`backup.sh`](vps/backup.sh) | Nightly dump + binlogs + **media** + encrypted env files, age encryption, rclone off-server upload with verification, retention. |
+| [`restore-test.sh`](vps/restore-test.sh) | Restore the newest backup into a scratch DB, prove the media/env archives, JSON evidence log. |
+| [`check-nginx.sh`](vps/check-nginx.sh) | Dev/CI: render all nginx templates and `nginx -t`; `--routes` asserts routing, limits, headers, allow-list/basic auth against a running nginx. |
+| `templates/` | nginx (common, per-app bodies, http/tls servers), PHP-FPM pool, supervisor, cron, logrotate templates. |
 
-`lib/common.sh` holds the shared bash helpers (`run`, dry-run, `.env` editing, secret generation).
+`lib/stack.sh` models the api/site/admin stack (domains, users, ports, nginx rendering); `lib/common.sh` holds the shared bash helpers (`run`, dry-run, `.env` editing, secret generation).
 
 ## Rules
 
