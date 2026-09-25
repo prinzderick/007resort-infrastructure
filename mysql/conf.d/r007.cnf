@@ -29,6 +29,9 @@ binlog_format              = ROW
 binlog_row_image           = FULL
 binlog_expire_logs_seconds = 1209600   # 14 days; must exceed the full-backup interval
 max_binlog_size            = 256M
+# The API creates append-only triggers (stock_movement, audit); with the binary log on, MySQL refuses CREATE TRIGGER
+# for a non-SUPER account unless this is set. Safe here: only our own migrations create triggers.
+log_bin_trust_function_creators = ON
 
 # --- Connections / safety ---
 max_connections           = 300
