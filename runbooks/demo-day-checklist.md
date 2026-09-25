@@ -23,7 +23,7 @@ Owner of each line: write initials + time when done. Anything not ticked by T-30
 - [ ] Fresh install rehearsal on a spare machine/VM: dry-run, install, deploy, `status.ps1` green after **reboot**.
 - [ ] Devices: DHCP reservation/name for the server (`r007-api.site.local`) - or the laptop's IP is fixed for the day (router reservation); tablets join the right Wi-Fi ([device onboarding](device-registration.md)); mobile data **off** on demo devices.
 - [ ] Rehearse the demo script below start to finish, with the **WAN unplugged** in the middle. Time it. Fix what breaks; note it here.
-- [ ] `update.ps1 -Rollback` / `r007-deploy rollback` rehearsed once (so nobody fears the button).
+- [ ] `update.ps1 -Rollback` / `r007-deploy rollback <app>` rehearsed once (so nobody fears the button).
 
 ## T-1 day: freeze
 

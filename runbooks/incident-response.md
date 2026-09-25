@@ -26,7 +26,7 @@ Get-Service R007-*, R007MySQL, Memurai, W3SVC
 Get-Content C:\R007\logs\R007-Queue.err.log -Tail 100
 ```
 ```bash
-sudo supervisorctl status ; r007-deploy status ; curl -fsS http://127.0.0.1:8088/up     # Cloud
+sudo supervisorctl status ; r007-deploy status ; curl -fsS http://127.0.0.1:8088/up ; r007-smoke --mode local     # Cloud (loopback: 8088 api, 8089 site, 8090 admin)
 tail -n 100 /var/log/r007/queue.log /var/www/r007/shared/storage/logs/laravel-*.log
 ```
 
@@ -35,7 +35,7 @@ tail -n 100 /var/log/r007/queue.log /var/www/r007/shared/storage/logs/laravel-*.
 - **API down (Local):** `status.ps1` -> which check fails? IIS: `iisreset`, `Restart-WebAppPool R007`; workers: `Restart-Service R007-Queue,R007-Sync,R007-Reverb`
   (NSSM already restarts crashes - repeated crashes = read `*.err.log`); MySQL: `Restart-Service R007MySQL`, check `logs\mysql-error.log` and free disk;
   Redis: `Restart-Service Memurai`. Bad release: `update.ps1 -Rollback`. SEV1 if not restored in 15 min.
-- **API down (Cloud):** `supervisorctl status`, `systemctl status nginx php8.4-fpm mysql redis-server`; bad deploy: `r007-deploy rollback`; disk/RAM (`df -h`, `free -m`).
+- **API down (Cloud):** `supervisorctl status`, `systemctl status nginx php8.4-fpm mysql redis-server`; bad deploy: `r007-deploy rollback <api|site|admin>`; disk/RAM (`df -h`, `free -m`).
 - **Queue/sync stalled:** workers running? Redis up? Cloud reachable (`Test-NetConnection <cloud host> -Port 443`)? Node credential rejected (401 in sync log) -> [credential rotation](node-credential-rotation.md).
   Do not clear queues or edit outbox tables by hand; use the admin-web retry/reprocess action (permission-gated and audited).
 - **Database corruption / bad data change:** stop workers and web, follow [backup and restore](backup-and-restore.md) (PITR). Never fix business data with ad-hoc SQL; only approved, reviewed changes.

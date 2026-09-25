@@ -22,7 +22,7 @@ chore(ci): pin actionlint version
    `*.pfx`), backups or real `.env` files. Use `<secret>` / `change-me` placeholders.
    If a secret is committed by mistake: rotate it immediately, then clean history.
 2. **Templates stay complete.** Any new setting used by the Laravel API must appear in
-   `env/local.env.example` and/or `env/cloud.env.example` with a comment (placeholders only), in step with `007resort-api/.env.example`.
+   `env/local.env.example`, `env/cloud.env.example`, `env/site.env.example` and/or `env/admin.env.example` (and `env/stack.env.example` for VPS-level settings) with a comment (placeholders only), in step with `007resort-api/.env.example`.
 3. **Scripts** read credentials from protected files or generate them, never take secrets as parameters, support
    `-DryRun` (PowerShell) / `--dry-run` (bash), are idempotent, and pass shellcheck / PSScriptAnalyzer.
 4. **Network** changes must keep the site server/database unreachable from the internet; sync
