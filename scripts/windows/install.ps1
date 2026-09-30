@@ -336,7 +336,14 @@ FLUSH PRIVILEGES;
     Set-R007Acl -Path $MySqlDataDir -Grants @{ $vsa = 'Modify' } -Inherit:$false
     Set-R007Acl -Path $base -Grants @{ $vsa = 'ReadAndExecute' } -Inherit
     Set-R007Acl -Path $paths.Logs -Grants @{ $vsa = 'Modify'; $localSvc = 'Modify' } -Inherit:$false
-    Start-R007Services @($svcName)
+    # my.ini (with its init-file) is regenerated unconditionally above, every run, but Start-R007Services only
+    # starts a stopped service - it never restarts an already-running one. That silently leaves a re-run's fresh
+    # root-bootstrap SQL (and any other my.ini change) unapplied against the still-running old process, which is
+    # exactly what made the root-probe below fail with a password that was never actually the one on disk. Force
+    # a restart whenever the service is already running so config changes here always take effect.
+    $svc = Get-R007Service -Name $svcName
+    if ($svc -and $svc.Status -eq 'Running') { Invoke-R007Step "restart service $svcName (config changed)" { Restart-Service -Name $svcName; $svc.WaitForStatus('Running', [TimeSpan]::FromSeconds(60)) } }
+    else { Start-R007Services @($svcName) }
     for ($i = 0; $i -lt 30 -and -not (Test-R007TcpPort -Port 3306); $i++) { Start-Sleep -Seconds 1 }
     if (-not (Test-R007TcpPort -Port 3306)) { throw 'MySQL did not start; see logs\mysql-error.log' }
 
