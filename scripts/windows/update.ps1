@@ -193,6 +193,11 @@ try {
         Invoke-R007Artisan -ReleaseDir $relDir -Arguments @('migrate', '--force') -ExtraEnv $extra
     }
     foreach ($c in @('config:cache', 'route:cache', 'event:cache', 'view:cache')) { Invoke-R007Artisan -ReleaseDir $relDir -Arguments @($c) }
+    # public/storage -> storage/app/public (uploaded CMS media, etc.) - never actually called before tonight's
+    # first real deploy, so every upload feature would 404 until someone noticed and ran this by hand.
+    if (-not (Test-Path -LiteralPath (Join-Path $relDir 'public\storage'))) {
+        Invoke-R007Artisan -ReleaseDir $relDir -Arguments @('storage:link')
+    }
 
     Switch-R007Release $ReleaseId
     $switched = $true

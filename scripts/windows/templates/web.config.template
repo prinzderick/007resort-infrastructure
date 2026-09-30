@@ -2,11 +2,9 @@
 <!-- Managed by 007resort-infrastructure (scripts/windows/update.ps1 copies this into each release's public/). -->
 <configuration>
   <system.webServer>
-    <handlers>
-      <remove name="PHP-FastCGI" />
-      <add name="PHP-FastCGI" path="*.php" verb="GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS" modules="FastCgiModule"
-           scriptProcessor="@@PHPCGI@@" resourceType="Either" requireAccess="Script" />
-    </handlers>
+    <!-- The PHP-FastCGI handler is registered once, globally, by install.ps1 (system.webServer/handlers is
+         locked at the parent level by default in a stock IIS install, so declaring it again per-release here
+         fails with "This configuration section cannot be used at this path", IIS error 500.19). -->
     <defaultDocument>
       <files>
         <clear />

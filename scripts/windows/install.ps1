@@ -440,6 +440,24 @@ function Initialize-Iis {
         Add-WebConfiguration -PSPath $apphost -Filter '/system.webServer/fastCgi' -Value @{ fullPath = $cgi; maxInstances = 8; instanceMaxRequests = 500; activityTimeout = 120; requestTimeout = 90 }
         Add-WebConfiguration -PSPath $apphost -Filter "/system.webServer/fastCgi/application[@fullPath='$cgi']/environmentVariables" -Value @{ name = 'PHP_FCGI_MAX_REQUESTS'; value = '500' }
     }
+
+    # The *handler mapping* (separate from the FastCGI process just registered) used to live only in each
+    # release's web.config (web.config.template) - but system.webServer/handlers is locked at the parent level
+    # by default in a stock IIS install, so every release's site-level web.config failed with "This configuration
+    # section cannot be used at this path" (500.19) the first time this ever ran against real IIS tonight. Register
+    # the handler once, globally, here instead; web.config.template no longer declares one.
+    if (-not (Get-WebConfiguration -PSPath $apphost -Filter "/system.webServer/handlers/add[@name='PHP-FastCGI']")) {
+        Add-WebConfiguration -PSPath $apphost -Filter '/system.webServer/handlers' -Value @{
+            name = 'PHP-FastCGI'; path = '*.php'; verb = 'GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS'
+            modules = 'FastCgiModule'; scriptProcessor = $cgi; resourceType = 'Either'; requireAccess = 'Script'
+        }
+    }
+    # Anonymous auth defaults to the fixed IUSR account, not the app pool identity - but every ACL this script sets
+    # (releases, storage, secrets) grants "IIS AppPool\R007", never IUSR. That mismatch is a 401.3 access-denied on
+    # every request, since IIS's own anonymous-access check runs as IUSR before a request ever reaches PHP. Blank
+    # userName tells IIS to use the app pool identity for anonymous access instead, matching the ACL model already
+    # in use everywhere else in this script.
+    Set-WebConfigurationProperty -PSPath $apphost -Filter 'system.webServer/security/authentication/anonymousAuthentication' -Name userName -Value ''
     $pool = $state.AppPool
     if (-not (Test-Path "IIS:\AppPools\$pool")) { New-WebAppPool -Name $pool | Out-Null }
     Set-ItemProperty "IIS:\AppPools\$pool" -Name managedRuntimeVersion -Value ''
