@@ -33,3 +33,8 @@ binlog_format = ROW
 binlog_row_image = FULL
 binlog_expire_logs_seconds = 1209600
 max_binlog_size = 256M
+
+# The API creates append-only triggers (stock_movement, audit); with the binary log on, MySQL refuses
+# CREATE TRIGGER for a non-SUPER account unless this is set. Safe here: only our own migrations create
+# triggers. (Same fix already applied on the Linux/VPS side, mysql/conf.d/r007.cnf.)
+log_bin_trust_function_creators = ON
