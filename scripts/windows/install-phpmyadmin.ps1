@@ -132,6 +132,9 @@ if (-not (Get-Website -Name $site -ErrorAction SilentlyContinue)) {
     Set-ItemProperty "IIS:\Sites\$site" -Name physicalPath -Value $dest
 }
 Start-Website -Name $site -ErrorAction SilentlyContinue
+# No web.config for this site (it ships its own, and phpMyAdmin doesn't need our template), so IIS's
+# server-wide default document list applies - which does not include index.php, giving a 403 on '/'.
+Add-WebConfiguration -PSPath "IIS:\Sites\$site" -Filter 'system.webServer/defaultDocument/files' -Value @{ value = 'index.php' } -ErrorAction SilentlyContinue
 
 # the app pool identity needs read on config.inc.php (it carries the blowfish secret - keep it tight)
 Set-R007Acl -Path $configPath -Grants @{ "IIS AppPool\$pool" = 'Read' }
@@ -140,9 +143,9 @@ Set-R007Acl -Path $dest -Grants @{ "IIS AppPool\$pool" = 'ReadAndExecute' } -Inh
 # ---- firewall: same AllowedSubnets pattern as the main site, this port only -----------------------------------
 $ruleName = 'R007 phpMyAdmin (property VLANs)'
 if (-not (Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue)) {
-    New-NetFirewallRule -DisplayName $ruleName -Direction Inbound -Protocol TCP -LocalPort $Port -RemoteAddress $AllowedSubnets -Action Allow | Out-Null
+    New-NetFirewallRule -DisplayName $ruleName -Direction Inbound -Protocol TCP -LocalPort $Port -RemoteAddress @($AllowedSubnets) -Action Allow | Out-Null
 } else {
-    Set-NetFirewallRule -DisplayName $ruleName -RemoteAddress $AllowedSubnets | Out-Null
+    Set-NetFirewallRule -DisplayName $ruleName -RemoteAddress @($AllowedSubnets) | Out-Null
 }
 
 Write-R007Log "phpMyAdmin ready: http://<this server>:$Port/  (log in as r007_dba - password in $dbaCnf)" 'OK'
