@@ -344,10 +344,15 @@ FLUSH PRIVILEGES;
     if (-not (Test-Path -LiteralPath $adminCnf)) {
         # init-file (above) has already applied the root password + 127.0.0.1 grant on this first startup;
         # confirm it actually took before trusting it, rather than writing credentials that might not work.
-        # discard stderr rather than merge it (2>&1): mysql.exe's harmless "password on the command line"
-        # warning goes to stderr, and $ErrorActionPreference = 'Stop' turns a merged stderr line into a
-        # terminating error here even on success - $LASTEXITCODE is the real signal.
+        # Windows PowerShell 5.1 quirk: with $ErrorActionPreference = 'Stop' set globally, ANY stderr line from a
+        # native command is promoted to a terminating error here, independent of redirection - 2>$null alone
+        # does not prevent it. mysql.exe's harmless "password on the command line" warning goes to stderr
+        # regardless of how it is invoked, so relax the preference locally for just this call and rely on
+        # $LASTEXITCODE (checked below) for the real success/failure signal.
+        $prevEap = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
         $probe = "SELECT 1;" | & $mysql -h 127.0.0.1 -u root "--password=$rootPw" --skip-column-names 2>$null
+        $ErrorActionPreference = $prevEap
         if ($LASTEXITCODE -ne 0) { throw "MySQL root bootstrap via init-file did not take effect: $probe" }
         Set-Content -LiteralPath $adminCnf -Value "[client]`r`nuser=root`r`npassword=$rootPw`r`nhost=127.0.0.1`r`nport=3306" -Encoding ASCII
         Set-R007Acl -Path $adminCnf
