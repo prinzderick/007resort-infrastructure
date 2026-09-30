@@ -293,8 +293,34 @@ function Install-MySql {
 
     $ramMb = [int] ((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1MB)
     $pool = [math]::Max(512, [int] ($ramMb * 0.4))
+
+    # skip_name_resolve = ON below (correct: this machine's MySQL is never reached by anything but the app) means
+    # the server matches connecting clients by raw IP, never by resolving 127.0.0.1 back to the string 'localhost'.
+    # Windows has no Unix socket, so every connection - including this script's own bootstrap - is TCP. That makes
+    # the 'root'@'localhost' account --initialize-insecure creates permanently unreachable here: not just on this
+    # first run, on every run. Fix it the way the app/migrator users below already are: also grant root@127.0.0.1.
+    # That first grant can't go through a normal client connection either (nothing can authenticate yet), so it's
+    # applied via --init-file, which the server runs itself at startup, before it ever opens a network socket.
+    $adminCnf = Join-Path $paths.Secrets 'mysql-admin.cnf'
+    $rootPw = $null
+    if (Test-Path -LiteralPath $adminCnf) {
+        $existing = Get-Content -LiteralPath $adminCnf | Where-Object { $_ -match '^password=' } | Select-Object -First 1
+        if ($existing) { $rootPw = $existing -replace '^password=', '' }
+    }
+    if (-not $rootPw) { $rootPw = New-R007Secret 32 }
+    $rootBootstrapSql = Join-Path $paths.Secrets 'mysql-root-bootstrap.sql'
+    @"
+ALTER USER 'root'@'localhost' IDENTIFIED BY '$rootPw';
+CREATE USER IF NOT EXISTS 'root'@'127.0.0.1' IDENTIFIED BY '$rootPw';
+ALTER USER 'root'@'127.0.0.1' IDENTIFIED BY '$rootPw';
+GRANT ALL PRIVILEGES ON *.* TO 'root'@'127.0.0.1' WITH GRANT OPTION;
+FLUSH PRIVILEGES;
+"@ | Set-Content -LiteralPath $rootBootstrapSql -Encoding ASCII
+    Set-R007Acl -Path $rootBootstrapSql
+
     $tpl = Get-Content -LiteralPath (Join-Path $templateDir 'my.ini.template') -Raw
     $tpl = $tpl.Replace('@@BASEDIR@@', ($base -replace '\\', '/')).Replace('@@DATADIR@@', ($MySqlDataDir -replace '\\', '/')).Replace('@@LOGDIR@@', ($paths.Logs -replace '\\', '/')).Replace('@@BUFFERPOOL@@', "${pool}M")
+    $tpl += "`r`ninit-file = $($rootBootstrapSql -replace '\\', '/')`r`n"
     Set-Content -LiteralPath $myIni -Value $tpl -Encoding ASCII
 
     if (-not (Test-Path (Join-Path $MySqlDataDir 'mysql'))) {
@@ -315,11 +341,11 @@ function Install-MySql {
     if (-not (Test-R007TcpPort -Port 3306)) { throw 'MySQL did not start; see logs\mysql-error.log' }
 
     $mysql = Join-Path $bin 'mysql.exe'
-    $adminCnf = Join-Path $paths.Secrets 'mysql-admin.cnf'
     if (-not (Test-Path -LiteralPath $adminCnf)) {
-        $rootPw = New-R007Secret 32
-        "ALTER USER 'root'@'localhost' IDENTIFIED BY '$rootPw'; FLUSH PRIVILEGES;" | & $mysql -u root --skip-password
-        if ($LASTEXITCODE -ne 0) { throw 'Could not set the MySQL root password (was it already set? Create secrets\mysql-admin.cnf by hand).' }
+        # init-file (above) has already applied the root password + 127.0.0.1 grant on this first startup;
+        # confirm it actually took before trusting it, rather than writing credentials that might not work.
+        $probe = "SELECT 1;" | & $mysql -h 127.0.0.1 -u root "--password=$rootPw" --skip-column-names 2>&1
+        if ($LASTEXITCODE -ne 0) { throw "MySQL root bootstrap via init-file did not take effect: $probe" }
         Set-Content -LiteralPath $adminCnf -Value "[client]`r`nuser=root`r`npassword=$rootPw`r`nhost=127.0.0.1`r`nport=3306" -Encoding ASCII
         Set-R007Acl -Path $adminCnf
     }
