@@ -214,7 +214,10 @@ function Initialize-Php {
     $redisDll = Join-Path $phpDir 'ext\php_redis.dll'
     if (-not (Test-Path -LiteralPath $redisDll)) {
         try {
-            $phpMinor = (& $state.PhpExe -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')
+            # Derived from the requested prefix (e.g. '8.4.' -> '8.4'), not by invoking php.exe -r: capturing
+            # PHP's own stdout here is fragile (an ini warning on stderr/stdout ordering can leave it empty),
+            # which silently produced an invalid URL (a bare "--" where the version belongs) on the first real run.
+            $phpMinor = $PhpVersionPrefix.TrimEnd('.')
             $zipName = "php_redis-$PhpRedisVersion-$phpMinor-nts-vs17-x64.zip"
             $url = "https://downloads.php.net/~windows/pecl/releases/redis/$PhpRedisVersion/$zipName"
             $zip = Join-Path $paths.Downloads $zipName
@@ -239,7 +242,10 @@ function Initialize-Php {
     $composerDir = Join-Path $paths.Tools 'composer'
     if (-not (Test-Path -LiteralPath (Join-Path $composerDir 'composer.phar'))) {
         New-R007Directory $composerDir
-        $sig = (Invoke-WebRequest -Uri 'https://composer.github.io/installer.sig' -UseBasicParsing).Content.Trim()
+        # PowerShell 7's Invoke-WebRequest returns .Content as raw bytes for a plain-text response (Windows
+        # PowerShell 5.1 returns a string); decode explicitly so this works on both.
+        $sigResponse = (Invoke-WebRequest -Uri 'https://composer.github.io/installer.sig' -UseBasicParsing).Content
+        $sig = $(if ($sigResponse -is [byte[]]) { [System.Text.Encoding]::UTF8.GetString($sigResponse) } else { $sigResponse }).Trim()
         $setup = Join-Path $paths.Downloads 'composer-setup.php'
         Invoke-WebRequest -Uri 'https://getcomposer.org/installer' -OutFile $setup -UseBasicParsing
         $hash = (Get-FileHash -Algorithm SHA384 -LiteralPath $setup).Hash
