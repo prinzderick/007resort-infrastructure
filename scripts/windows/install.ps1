@@ -316,7 +316,8 @@ ALTER USER 'root'@'127.0.0.1' IDENTIFIED BY '$rootPw';
 GRANT ALL PRIVILEGES ON *.* TO 'root'@'127.0.0.1' WITH GRANT OPTION;
 FLUSH PRIVILEGES;
 "@ | Set-Content -LiteralPath $rootBootstrapSql -Encoding ASCII
-    Set-R007Acl -Path $rootBootstrapSql
+    # mysqld itself (not just an interactive admin) reads this at startup as the service account.
+    Set-R007Acl -Path $rootBootstrapSql -Grants @{ "NT SERVICE\$svcName" = 'Read' }
 
     $tpl = Get-Content -LiteralPath (Join-Path $templateDir 'my.ini.template') -Raw
     $tpl = $tpl.Replace('@@BASEDIR@@', ($base -replace '\\', '/')).Replace('@@DATADIR@@', ($MySqlDataDir -replace '\\', '/')).Replace('@@LOGDIR@@', ($paths.Logs -replace '\\', '/')).Replace('@@BUFFERPOOL@@', "${pool}M")
