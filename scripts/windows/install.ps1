@@ -154,8 +154,16 @@ function Resolve-ChocoVersion {
 function Install-Packages {
     Write-R007Log '== Packages (Chocolatey)' 'STEP'
     if ($DryRun) {
-        Write-R007Log "[dry-run] choco install vcredist140 urlrewrite nssm; php $PhpVersionPrefix* -> $(Join-Path $paths.Tools 'php'); $MemuraiPackage"
+        Write-R007Log "[dry-run] enable Web-Server + CGI; choco install vcredist140 urlrewrite nssm; php $PhpVersionPrefix* -> $(Join-Path $paths.Tools 'php'); $MemuraiPackage"
         return
+    }
+    # The urlrewrite Chocolatey package is an IIS extension installer: it fails with MSI
+    # error 1603 if the Web-Server role isn't present yet. Enable IIS + CGI first (idempotent;
+    # Initialize-Iis below enables the fuller feature list again, which is a harmless no-op).
+    if (Get-Command Install-WindowsFeature -ErrorAction SilentlyContinue) {
+        Install-WindowsFeature -Name 'Web-Server', 'Web-CGI' | Out-Null
+    } else {
+        Write-R007Log 'Install-WindowsFeature not available (client Windows?). Enable IIS + CGI manually before continuing.' 'WARN'
     }
     foreach ($p in @('vcredist140', 'urlrewrite', 'nssm')) { Invoke-R007Native 'choco.exe' @('upgrade', $p, '-y', '--no-progress') | Out-Null }
     $phpVer = Resolve-ChocoVersion 'php' $PhpVersionPrefix
