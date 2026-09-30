@@ -126,7 +126,7 @@ function Initialize-EnvFile {
         Invoke-R007Step "create $envPath from env/local.env.example" { Copy-Item -LiteralPath (Join-Path $repoRoot 'env\local.env.example') -Destination $envPath }
         if (-not $DryRun) {
             foreach ($k in @('DB_PASSWORD', 'DB_MIGRATOR_PASSWORD', 'REDIS_PASSWORD', 'REVERB_APP_SECRET')) { Set-R007EnvValue $envPath $k (New-R007Secret 32) }
-            Set-R007EnvValue $envPath 'REVERB_APP_ID' (New-R007Secret 8)
+            Set-R007EnvValue $envPath 'REVERB_APP_ID' (New-R007Secret 16)
             Set-R007EnvValue $envPath 'REVERB_APP_KEY' (New-R007Secret 20)
         }
     }
