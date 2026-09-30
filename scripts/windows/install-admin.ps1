@@ -29,7 +29,6 @@ $paths = Get-R007Paths
 $root = 'C:\R007-Admin'
 $current = Join-Path $root 'current'
 $phpExe = $paths.Tools + '\php\php.exe'
-$phpCgi = $paths.Tools + '\php\php-cgi.exe'
 $composer = Join-Path $paths.Tools 'composer\composer.bat'
 
 Write-R007Log '== Admin portal' 'STEP'
@@ -160,7 +159,6 @@ Set-R007Junction $current $fresh
 
 # IIS site + own app pool, same pattern proven out for phpMyAdmin
 Import-Module WebAdministration
-$apphost = 'MACHINE/WEBROOT/APPHOST'
 $pool = 'R007-Admin'
 if (-not (Test-Path "IIS:\AppPools\$pool")) { New-WebAppPool -Name $pool | Out-Null }
 Set-ItemProperty "IIS:\AppPools\$pool" -Name managedRuntimeVersion -Value ''
