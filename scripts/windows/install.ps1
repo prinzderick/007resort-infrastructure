@@ -337,7 +337,14 @@ FLUSH PRIVILEGES;
     Set-R007Acl -Path $MySqlDataDir -Grants @{ $vsa = 'Modify' } -Inherit:$false
     Set-R007Acl -Path $base -Grants @{ $vsa = 'ReadAndExecute' } -Inherit
     Set-R007Acl -Path $paths.Logs -Grants @{ $vsa = 'Modify'; $localSvc = 'Modify' } -Inherit:$false
-    Start-R007Services @($svcName)
+    # my.ini (with its init-file) is regenerated unconditionally above, every run, but Start-R007Services only
+    # starts a stopped service - it never restarts an already-running one. That silently leaves a re-run's fresh
+    # root-bootstrap SQL (and any other my.ini change) unapplied against the still-running old process, which is
+    # exactly what made the root-probe below fail with a password that was never actually the one on disk. Force
+    # a restart whenever the service is already running so config changes here always take effect.
+    $svc = Get-R007Service -Name $svcName
+    if ($svc -and $svc.Status -eq 'Running') { Invoke-R007Step "restart service $svcName (config changed)" { Restart-Service -Name $svcName; $svc.WaitForStatus('Running', [TimeSpan]::FromSeconds(60)) } }
+    else { Start-R007Services @($svcName) }
     for ($i = 0; $i -lt 30 -and -not (Test-R007TcpPort -Port 3306); $i++) { Start-Sleep -Seconds 1 }
     if (-not (Test-R007TcpPort -Port 3306)) { throw 'MySQL did not start; see logs\mysql-error.log' }
 
@@ -345,7 +352,15 @@ FLUSH PRIVILEGES;
     if (-not (Test-Path -LiteralPath $adminCnf)) {
         # init-file (above) has already applied the root password + 127.0.0.1 grant on this first startup;
         # confirm it actually took before trusting it, rather than writing credentials that might not work.
-        $probe = "SELECT 1;" | & $mysql -h 127.0.0.1 -u root "--password=$rootPw" --skip-column-names 2>&1
+        # Windows PowerShell 5.1 quirk: with $ErrorActionPreference = 'Stop' set globally, ANY stderr line from a
+        # native command is promoted to a terminating error here, independent of redirection - 2>$null alone
+        # does not prevent it. mysql.exe's harmless "password on the command line" warning goes to stderr
+        # regardless of how it is invoked, so relax the preference locally for just this call and rely on
+        # $LASTEXITCODE (checked below) for the real success/failure signal.
+        $prevEap = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        $probe = "SELECT 1;" | & $mysql -h 127.0.0.1 -u root "--password=$rootPw" --skip-column-names 2>$null
+        $ErrorActionPreference = $prevEap
         if ($LASTEXITCODE -ne 0) { throw "MySQL root bootstrap via init-file did not take effect: $probe" }
         Set-Content -LiteralPath $adminCnf -Value "[client]`r`nuser=root`r`npassword=$rootPw`r`nhost=127.0.0.1`r`nport=3306" -Encoding ASCII
         Set-R007Acl -Path $adminCnf
