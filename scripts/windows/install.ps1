@@ -257,7 +257,7 @@ function Install-MySql {
         if (-not $zip) {
             $name = "mysql-$MySqlVersion-winx64.zip"
             $zip = Join-Path $paths.Downloads $name
-            $url = "https://cdn.mysql.com/Downloads/MySQL-8.4/$name"
+            $url = "https://cdn.mysql.com/archives/mysql-8.4/$name"
             Write-R007Log "downloading $url (or download it yourself and pass -MySqlZip)"
             Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
         }
