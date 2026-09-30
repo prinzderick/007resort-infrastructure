@@ -458,9 +458,13 @@ function Install-Services {
 }
 
 function Register-R007Task {
-    param([string] $Name, [string] $Description, $Action, $Trigger, $Principal, $Settings)
+    # Invoke-R007Step's own parameters are named $Description/$Action; a scriptblock passed to it resolves
+    # free variables by walking UP the call stack (dynamic scoping), not from where the block was written,
+    # so using those same names here silently shadowed ours - $Action ended up being Invoke-R007Step's own
+    # scriptblock parameter, not the CimInstance from New-ScheduledTaskAction below. Renamed to not collide.
+    param([string] $Name, [string] $Desc, $TaskAction, $Trigger, $Principal, $Settings)
     Invoke-R007Step "register scheduled task '$Name'" {
-        Register-ScheduledTask -TaskName $Name -Description $Description -Action $Action -Trigger $Trigger -Principal $Principal -Settings $Settings -Force | Out-Null
+        Register-ScheduledTask -TaskName $Name -Description $Desc -Action $TaskAction -Trigger $Trigger -Principal $Principal -Settings $Settings -Force | Out-Null
     }
 }
 
