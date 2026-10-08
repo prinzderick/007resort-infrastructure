@@ -221,3 +221,35 @@ Media grows over time: the archive is a full copy each night (35 days remote ret
 Executed: shellcheck + `bash -n` on every script; dry-runs of every script; `scripts/vps/check-nginx.sh --routes` (all templates rendered in http and https mode and `nginx -t`, then **36 behavioural assertions against a running nginx**: routing, cache headers, limits, redirects, HSTS, allow-list, basic auth, noindex, rate limit); in an **Ubuntu 24.04 container** (arm64, nginx 1.24, PHP 8.4-FPM from ondrej, Redis, Supervisor, MySQL 8.0 because the MySQL 8.4 apt repo has no arm64 packages): the real `provision-stack.sh` (twice: idempotent), pools/users/permissions, three real Laravel apps deployed with the real `deploy.sh` (migrate, caches, switch, smoke, automatic rollback of a bad release, `all`, `recache`), public smoke over TLS (self-signed), admin allow-list and basic auth, isolation checks between the three users, `r007-backup` + `r007-restore-test` (media + env archives, local and via an rclone remote); the MySQL 8.4 apt repository and its signing key on amd64.
 
 Not executed: bootstrap.sh on a real host (SSH/ufw/fail2ban; dry-run only), certbot against the real Let's Encrypt (`r007-tls --test` is the check to run first), systemd itself (the container used a service shim), the real API/site/admin code (a stock Laravel app stood in for all three), the CI workflow on GitHub, Reverb (a stand-in command), real email, Paystack.
+
+## Database admin (Adminer over an SSH tunnel)
+
+For looking at and fixing data on the cloud node without a public login page. Adminer listens on `127.0.0.1:8099` only
+(never on the firewall's open ports) and you reach it through SSH, so it works from any network with no IP allow-list,
+no DNS record and no certificate. (phpMyAdmin is not used: its latest release supports PHP < 8.4 and this stack runs 8.4.)
+
+**Install (root console, once):**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/prinzderick/007resort-infrastructure/main/scripts/vps/install-dbadmin.sh -o /tmp/install-dbadmin.sh
+bash /tmp/install-dbadmin.sh --dry-run     # read the plan
+bash /tmp/install-dbadmin.sh               # prints the DB login ONCE - copy it
+```
+
+Options: `--read-only` (login can only read), `--rotate` (new password), `--remove` (uninstall), `--db`, `--port`, `--version`.
+
+**Use (from your own computer, each time):**
+
+```bash
+ssh -N -L 8099:127.0.0.1:8099 -i ~/.ssh/r007_vps_ed25519 deploy@<server-ip>
+# leave it running, then open http://127.0.0.1:8099/
+# System: MySQL   Server: localhost   Username: r007_dba   Database: r007
+```
+
+The `r007_dba` login can only see the one application database, only from the server itself, and the PHP pool runs as its own
+system user with a filesystem jail and no shell-exec functions. It can change production data: prefer `--read-only` for routine
+looking, and take a backup first ([backup runbook](../runbooks/backup-and-restore.md)) before editing rows.
+
+**Files:** no web file manager is installed (one more thing to attack). Use SFTP with the same key, for example
+`sftp -i ~/.ssh/r007_vps_ed25519 deploy@<server-ip>` or Cyberduck/FileZilla. `deploy` can read the apps but is deliberately not able to
+overwrite them; code changes go through `deploy.sh`, and `.env` files through `sudoedit` as described above.
